@@ -8,7 +8,7 @@ model.compile("adam", "sparse_categorical_crossentropy", metrics=["accuracy"])
 
 model.fit(x_train, y_train, epochs=1, batch_size=32)
 
-class FlowerClient(fl.client.NumpyClient):
+class FlowerClient(fl.client.NumPyClient):
 
     def get_parameters(self, config):
         return model.get_weights()
