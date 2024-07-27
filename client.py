@@ -1,13 +1,23 @@
 from flwr.client import NumPyClient, start_client
 import tensorflow as tf
+from dataProcessing.ipynb import X_train, Y_train, X_test, Y_test
 
+def get_model():
+    """Constructs a simple model architecture suitable for MNIST."""
+    model = tf.keras.models.Sequential(
+        [
+            tf.keras.layers.Flatten(input_shape=(28, 28)),
+            tf.keras.layers.Dense(128, activation="relu"),
+            tf.keras.layers.Dropout(0.2),
+            tf.keras.layers.Dense(10, activation="softmax"),
+        ]
+    )
+    model.compile("adam", "sparse_categorical_crossentropy", metrics=["accuracy"])
+    return model
 
-model = tf.keras.applications.MobileNetV2((32,32,3), classes=10, weights=None)
-model.compile("adam", "sparse_categorical_crossentropy", metrics=["accuracy"])
+model = get_model()
 
-(x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
-
-model.fit(x_train, y_train, epochs=1, batch_size=32)
+model.fit(X_train, Y_train, epochs=1, batch_size=32)
 
 # Define Flower client
 class FlowerClient(NumPyClient):
@@ -16,13 +26,13 @@ class FlowerClient(NumPyClient):
 
     def fit(self, parameters, config):
         model.set_weights(parameters)
-        model.fit(x_train, y_train, epochs=1, batch_size=32)
-        return model.get_weights(), len(x_train), {}
+        model.fit(X_train, Y_train, epochs=1, batch_size=32)
+        return model.get_weights(), len(X_train), {}
 
     def evaluate(self, parameters, config):
         model.set_weights(parameters)
-        loss, accuracy = model.evaluate(x_test, y_test)
-        return loss, len(x_test), {"accuracy": accuracy}
+        loss, accuracy = model.evaluate(X_test, Y_test)
+        return loss, len(X_test), {"accuracy": accuracy}
 
 start_client(
         server_address="127.0.0.1:8080",
