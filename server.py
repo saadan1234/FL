@@ -23,7 +23,7 @@ class SaveModelFedMedian(FedMedian):
 # Start the server with the custom strategy
 fl.server.start_server(
     server_address="0.0.0.0:8080",
-    config=ServerConfig(num_rounds=1),
+    config=ServerConfig(num_rounds=3),
     strategy=SaveModelFedMedian(),
 )
 
