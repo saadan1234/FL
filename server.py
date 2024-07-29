@@ -1,54 +1,39 @@
-import flwr as fl
-from flwr.server import ServerConfig
-from flwr.server.strategy import FedMedian
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
-import pickle
+from typing import List, Tuple
 
-# Load the data from the file
-with open('data.pkl', 'rb') as f:
-    X_train, Y_train, X_test, Y_test = pickle.load(f)
+from flwr.server import ServerApp, ServerConfig
+from flwr.server.strategy import FedAvg
+from flwr.common import Metrics
 
-class SaveModelFedMedian(FedMedian):
-    def aggregate_fit(
-        self, rnd, results, failures
-    ):
-        aggregated_weights = super().aggregate_fit(rnd, results, failures)
-        # Save the model parameters to disk
-        with open(f"model_round_{rnd}.pkl", "wb") as f:
-            pickle.dump(aggregated_weights, f)
-        return aggregated_weights
 
-# Start the server with the custom strategy
-fl.server.start_server(
-    server_address="0.0.0.0:8080",
-    config=ServerConfig(num_rounds=3),
-    strategy=SaveModelFedMedian(),
+# Define metric aggregation function
+def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+    # Multiply accuracy of each client by number of examples used
+    accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
+    examples = [num_examples for num_examples, _ in metrics]
+
+    # Aggregate and return custom metric (weighted average)
+    return {"accuracy": sum(accuracies) / sum(examples)}
+
+
+# Define strategy
+strategy = FedAvg(evaluate_metrics_aggregation_fn=weighted_average)
+
+
+# Define config
+config = ServerConfig(num_rounds=3)
+
+# Flower ServerApp
+app = ServerApp(
+    config=config,
+    strategy=strategy,
 )
 
-# Load the saved model parameters
-with open("model_round_3.pkl", "rb") as f:
-    final_weights = pickle.load(f)
+# Legacy mode
+if __name__ == "__main__":
+    from flwr.server import start_server
 
-# Define and compile the model
-def get_model():
-    model = tf.keras.models.Sequential(
-        [
-            tf.keras.layers.Flatten(input_shape=X_train.shape[1:]),
-            Dropout(0.2),
-            Dense(32, activation='relu'),
-            Dropout(0.2),
-            Dense(1)
-        ]
+    start_server(
+        server_address="0.0.0.0:8080",
+        config=config,
+        strategy=strategy,
     )
-    model.compile("adam", "mse", metrics=["mae"])
-    return model
-
-model = get_model()
-model.set_weights(final_weights)
-
-# Evaluate the model
-loss, accuracy = model.evaluate(X_test, Y_test)
-print(f"Test loss: {loss}")
-print(f"Test accuracy: {accuracy}")

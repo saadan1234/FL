@@ -3,6 +3,7 @@ import tensorflow as tf
 import pickle
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout
+from tqdm import tqdm
 import os
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -30,7 +31,12 @@ def get_model():
 
 model = get_model()
 
-model.fit(X_train, X_train, epochs=25, batch_size=64, validation_split=0.2)
+# Custom training function with progress bar
+def train_model_with_progress(model, X_train, Y_train, epochs, batch_size, validation_split=0.2):
+    for epoch in tqdm(range(epochs), desc="Training epochs"):
+        model.fit(X_train, Y_train, epochs=1, batch_size=batch_size, validation_split=validation_split, verbose=0)
+
+train_model_with_progress(model, X_train, Y_train, epochs=25, batch_size=64)
 
 # Define Flower client
 class FlowerClient(NumPyClient):
@@ -39,7 +45,7 @@ class FlowerClient(NumPyClient):
 
     def fit(self, parameters, config):
         model.set_weights(parameters)
-        model.fit(X_train, Y_train, epochs=1, batch_size=32)
+        train_model_with_progress(model, X_train, Y_train, epochs=1, batch_size=32)
         return model.get_weights(), len(X_train), {}
 
     def evaluate(self, parameters, config):
@@ -48,6 +54,6 @@ class FlowerClient(NumPyClient):
         return loss, len(X_test), {"accuracy": accuracy}
 
 start_client(
-        server_address="127.0.0.1:8080",
-        client=FlowerClient().to_client(),
-    )
+    server_address="127.0.0.1:8080",
+     client=FlowerClient().to_client()
+)
