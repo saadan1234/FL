@@ -34,9 +34,7 @@ model = get_model()
 # Custom training function with progress bar
 def train_model_with_progress(model, X_train, Y_train, epochs, batch_size, validation_split=0.2):
     for epoch in tqdm(range(epochs), desc="Training epochs"):
-        model.fit(X_train, Y_train, epochs=1, batch_size=batch_size, validation_split=validation_split, verbose=0)
-
-train_model_with_progress(model, X_train, Y_train, epochs=25, batch_size=64)
+        model.fit(X_train, Y_train, epochs=epochs, batch_size=batch_size, validation_split=validation_split, verbose=0)
 
 # Define Flower client
 class FlowerClient(NumPyClient):
