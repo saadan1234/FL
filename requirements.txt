@@ -1,1 +1,9 @@
-flwr tensorflow
+numpy
+pandas
+matplotlib
+tensorflow
+scikit-learn
+seaborn
+scipy
+flwr
+tqdm
