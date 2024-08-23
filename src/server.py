@@ -3,7 +3,8 @@ from flwr.server import start_server
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from flwr.common import Metrics
-import matplotlib.pyplot as plt
+from visulalize import plot_metrics
+
 
 # Initialize lists to store loss and accuracy values
 rounds = []
@@ -52,28 +53,6 @@ def server_fn(context):
 # Flower ServerApp
 app = ServerApp(server_fn=server_fn)
 
-# Visualization function
-def plot_metrics(rounds, loss, accuracy):
-    plt.figure(figsize=(14, 6))
-
-    plt.subplot(1, 2, 1)
-    plt.plot(rounds, loss, marker='o', color='b', label='Loss')
-    plt.title('Loss Over Rounds')
-    plt.xlabel('Round')
-    plt.ylabel('Loss')
-    plt.grid(True)
-    plt.legend()
-
-    plt.subplot(1, 2, 2)
-    plt.plot(rounds, accuracy, marker='o', color='r', label='Accuracy')
-    plt.title('Accuracy Over Rounds')
-    plt.xlabel('Round')
-    plt.ylabel('Accuracy')
-    plt.grid(True)
-    plt.legend()
-
-    plt.tight_layout()
-    plt.show()
 
 # Legacy mode
 if __name__ == "__main__":
