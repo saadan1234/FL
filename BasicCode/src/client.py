@@ -3,7 +3,7 @@ from data import get_model, train_model_with_progress
 import pickle
 
 
-with open('..\BasicCode\data.pkl', 'rb') as f:
+with open('..\data\data.pkl', 'rb') as f:
     X_train, Y_train, X_test, Y_test = pickle.load(f)
 
 model = get_model(X_train.shape[1:])
@@ -25,7 +25,7 @@ class FlowerClient(NumPyClient):
         return loss, len(X_test), {"accuracy": accuracy}
 
 start_client(
-    server_address="127.0.0.2:8080",
+    server_address="127.0.0.1:8080",
      client=FlowerClient().to_client()
 )
 
