@@ -1,0 +1,14 @@
+# Example base.yaml config
+num_clients: 10
+batch_size: 32
+num_clients_per_round_fit: 10
+num_clients_per_round_eval: 10
+num_rounds: 5
+num_classes: 1  # For classification, number of classes; for regression, this might be 1
+is_classification: false  # Set to false for regression tasks
+dataset_path: "CIC_IOT23_DatasetSample.csv"  # Path to your dataset
+target_column: "label"  # Target column in your dataset (for both classification and regression)
+config_fit:
+  lr: 0.01
+  momentum: 0.9
+  local_epochs: 5

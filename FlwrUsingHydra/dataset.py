@@ -19,8 +19,9 @@ def get_mnist(data_path: str = "./data"):
 def prepare_dataset(num_partitions: int, batch_size: int, val_ratio: float = 0.1):
     """Download MNIST and generate IID partitions."""
 
-    # download MNIST in case it's not already in the system
-    trainset, testset = get_mnist()
+    # get dataset in form of train and test sets.
+    # trainset, testset = get_dataset('CIC_IOT23_DatasetSample.csv', 'label', 0.2, 32)
+    trainset, testset =  get_mnist("./data")
 
     # split trainset into `num_partitions` trainsets (one per client)
     # figure out number of training examples per partition
