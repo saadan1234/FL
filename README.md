@@ -1,7 +1,3 @@
-Here’s a more formal description for your Federated Learning project repository:
-
----
-
 # Federated Learning Strategies and Experimentation Repository
 
 This repository serves as a comprehensive resource for exploring and implementing Federated Learning (FL) strategies. It combines various methodologies and experiments to demonstrate how distributed machine learning models can be collaboratively trained across multiple decentralized devices, while ensuring data privacy and security. 
@@ -24,7 +20,3 @@ Federated Learning is a decentralized approach to training machine learning mode
 ## Contributions
 
 The repository draws from various open-source resources and contributions, which are duly credited to their respective owners. The project does not intend to infringe on copyrights and complies with the licensing terms of the incorporated projects. Users are encouraged to experiment, extend, and contribute to the repository while adhering to these terms.
-
----
-
-By framing the project this way, it reflects professionalism, while clearly explaining the purpose, functionality, and legal considerations around the usage of open-source assets.
