@@ -11,6 +11,8 @@ from dataset import prepare_dataset
 from server import get_evaluate_fn, get_on_fit_config
 
 
+
+
 # A decorator for Hydra. This tells hydra to by default load the config in conf/base.yaml
 @hydra.main(config_path="conf", config_name="base", version_base=None)
 def main(cfg: DictConfig):
@@ -48,7 +50,7 @@ def main(cfg: DictConfig):
         on_fit_config_fn=get_on_fit_config(
             cfg.config_fit
         ),  # a function to execute to obtain the configuration to send to the clients during fit()
-        evaluate_fn=get_evaluate_fn(cfg.num_classes, testloader, is_classification=cfg.is_classification),
+        evaluate_fn=get_evaluate_fn(cfg.num_clients, testloader, is_classification=cfg.is_classification),
     )  # a function to run on the server side to evaluate the global model.
 
     ## 5. Start Simulation
