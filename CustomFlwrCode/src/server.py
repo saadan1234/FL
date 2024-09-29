@@ -1,15 +1,17 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from flwr.server import start_server
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from flwr.common import Metrics
 from visulalize import plot_metrics
 
-
 # Initialize lists to store loss and accuracy values
 rounds = []
 loss = []
 accuracy = []
+
+# Track client performance
+client_performance: Dict[int, List[float]] = {}
 
 # Define metric aggregation function to
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
@@ -39,27 +41,38 @@ class CustomFedAvg(FedAvg):
             loss.append(loss_value)
             accuracy.append(metrics["accuracy"])
         
+        # Track individual client performance
+        previous_accuracy = None
+        for client_id, (num_examples, client_metrics) in enumerate(results):
+            current_accuracy = client_metrics.metrics["accuracy"]
+            if previous_accuracy is None or current_accuracy >= previous_accuracy:
+                if client_id not in client_performance:
+                    client_performance[client_id] = []
+                client_performance[client_id].append(current_accuracy)
+                previous_accuracy = current_accuracy
+        
+        # Identify and separate clients with degrading performance
+        self.separate_degrading_clients()
+        
         return aggregated_result
-
-# Define the server function
-def server_fn(context):
-    strategy = CustomFedAvg(evaluate_metrics_aggregation_fn=weighted_average)
-    server_config = ServerConfig(num_rounds=20)
-    return ServerAppComponents(
-        strategy=strategy,
-        server_config=server_config,
-    )
-
-# Flower ServerApp
-app = ServerApp(server_fn=server_fn)
-
+    
+    def separate_degrading_clients(self):
+        degrading_clients = []
+        for client_id, performances in client_performance.items():
+            if len(performances) >= 3 and all(x > y for x, y in zip(performances[-3:], performances[-2:])):
+                degrading_clients.append(client_id)
+        
+        if degrading_clients:
+            print(f"Separating clients with degrading performance: {degrading_clients}")
+            for client_id in degrading_clients:
+                del client_performance[client_id]
 
 # Legacy mode
 if __name__ == "__main__":
     # Start the Flower server
     start_server(
         server_address="0.0.0.0:8080",
-        config=ServerConfig(num_rounds=20),
+        config=ServerConfig(num_rounds=16),
         strategy=CustomFedAvg(evaluate_metrics_aggregation_fn=weighted_average),
     )
 

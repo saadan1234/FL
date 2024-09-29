@@ -16,7 +16,8 @@ def get_model(input_shape):
     model.compile(optimizer='adam', loss='mse', metrics=['mae'])
     return model
 
-# Custom training function with progress bar
+from tqdm import tqdm
+
 def train_model_with_progress(model, X_train, Y_train, epochs, batch_size, validation_split=0.2):
     for epoch in tqdm(range(epochs), desc="Training epochs"):
-        model.fit(X_train, Y_train, epochs=epochs, batch_size=batch_size, validation_split=validation_split, verbose=0)
+        model.fit(X_train, Y_train, epochs=1, batch_size=batch_size, validation_split=validation_split, verbose=0)
