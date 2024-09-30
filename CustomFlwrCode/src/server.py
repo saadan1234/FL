@@ -72,7 +72,7 @@ if __name__ == "__main__":
     # Start the Flower server
     start_server(
         server_address="0.0.0.0:8080",
-        config=ServerConfig(num_rounds=16),
+        config=ServerConfig(num_rounds=5),
         strategy=CustomFedAvg(evaluate_metrics_aggregation_fn=weighted_average),
     )
 

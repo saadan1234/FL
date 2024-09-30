@@ -10,11 +10,11 @@ from flwr.client import NumPyClient, start_client
 from data import get_model, train_model_with_progress
 
 # Load a dataset from Hugging Face
-dataset = load_dataset('practical-dreamer/RPGPT_PublicDomain-alpaca')
+dataset = load_dataset('fathyshalab/massive_iot')
 
 # Filter out rows with null values
 def filter_nulls(example):
-    return all(example[column] is not None for column in ['instruction', 'input', 'output'])
+    return all(example[column] is not None for column in ['id', 'label', 'text'])
 
 dataset = dataset.filter(filter_nulls)
 
@@ -22,17 +22,17 @@ dataset = dataset.filter(filter_nulls)
 df = pd.DataFrame(dataset['train'])
 
 # Define the attribute columns and the target variable
-attribute_columns = ['input', 'instruction']
-target_column = 'output'
+attribute_columns = ['id', 'text']
+target_column = 'label'
 
 # Initialize the tokenizer
 tokenizer = AutoTokenizer.from_pretrained('bert-base-cased')
 
-# Tokenize the attribute and target columns
+# Tokenize the text column
 def tokenize_function(examples):
-    return tokenizer(examples['input'], examples['instruction'], examples['output'], truncation=True, padding='max_length')
+    return tokenizer(examples['text'], truncation=True, padding='max_length')
 
-tokenized_data = df.apply(lambda row: tokenize_function(row), axis=1)
+tokenized_data = df['text'].apply(lambda x: tokenize_function({'text': x}))
 
 # Convert tokenized data to DataFrame
 tokenized_df = pd.DataFrame(tokenized_data.tolist())
@@ -44,28 +44,23 @@ padded_data = data_collator(tokenized_df.to_dict(orient='records'))
 # Extract the padded sequences
 input_ids = padded_data['input_ids']
 attention_mask = padded_data['attention_mask']
-labels = padded_data['labels']
+labels = df['label'].values  # Use the labels directly from the DataFrame
 
-# MinMax Normalization
+# MinMax Normalization (optional, typically not done for text data)
 scaler = MinMaxScaler()
 
 # Normalize the padded sequences using MinMaxScaler
 x = scaler.fit_transform(input_ids)
 x = pd.DataFrame(x)
 
-# Normalize the target variable using MinMaxScaler
-y = scaler.fit_transform(labels)
-y = pd.DataFrame(y)
-
 # Display the first few rows of the normalized data for selected columns
 print("MinMax Normalized Data:")
 print(x.head())
-print(y.head())
 
 # Split the dataset into training and testing sets
 X_train, X_test, Y_train, Y_test = train_test_split(
     x, 
-    y, 
+    labels, 
     test_size=0.2,  # Equivalent to test_samples_per_block / samples_per_block
     random_state=42  # For reproducibility
 )
@@ -85,7 +80,14 @@ with open('data.pkl', 'wb') as f:
 with open('data.pkl', 'rb') as f:
     X_train, Y_train, X_test, Y_test = pickle.load(f)
 
-model = get_model(X_train.shape[1:])
+# Define model parameters
+vocab_size = 10000  # Adjust as needed
+embedding_dim = 100  # Adjust as needed
+input_length = X_train.shape[1]
+num_classes = len(np.unique(Y_train))
+
+# Create the model
+model = get_model(vocab_size, embedding_dim, input_length, num_classes)
 
 # Define Flower client
 class FlowerClient(NumPyClient):
@@ -94,7 +96,7 @@ class FlowerClient(NumPyClient):
 
     def fit(self, parameters, config):
         model.set_weights(parameters)
-        train_model_with_progress(model, X_train, Y_train, epochs=25, batch_size=32)
+        train_model_with_progress(model, X_train, Y_train, epochs=5, batch_size=32)
         return model.get_weights(), len(X_train), {}
 
     def evaluate(self, parameters, config):
@@ -103,6 +105,6 @@ class FlowerClient(NumPyClient):
         return loss, len(X_test), {"accuracy": accuracy}
 
 start_client(
-    server_address="127.0.0.3:8080",
+    server_address="127.0.0.1:8080",
     client=FlowerClient().to_client()
 )
