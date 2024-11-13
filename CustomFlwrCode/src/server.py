@@ -66,51 +66,52 @@ class CustomFedAvg(FedAvg):
         self.reconstruction_threshold = reconstruction_threshold
         self.autoencoder = autoencoder
     
-        def aggregate_evaluate(self, rnd: int, results, failures):
-            # Call the aggregate_evaluate function from the superclass
-            aggregated_result = super().aggregate_evaluate(rnd, results, failures)
-            
-            # Append the current round number for tracking
-            rounds.append(rnd)
-            
-            # Extract aggregated loss and accuracy from the result
-            if aggregated_result is not None:
-                loss_value = aggregated_result[0]
-                metrics = aggregated_result[1]
-                loss.append(loss_value)
-                accuracy.append(metrics["accuracy"])
+    def aggregate_evaluate(self, rnd: int, results, failures):
+        # Call the aggregate_evaluate function from the superclass
+        aggregated_result = super().aggregate_evaluate(rnd, results, failures)
+        
+        # Append the current round number for tracking
+        rounds.append(rnd)
+        
+        # Extract aggregated loss and accuracy from the result
+        if aggregated_result is not None:
+            loss_value = aggregated_result[0]
+            metrics = aggregated_result[1]
+            loss.append(loss_value)
+            accuracy.append(metrics["accuracy"])
 
-            # Collect client updates for anomaly detection
-            client_updates = [res.parameters for res in results if hasattr(res, "parameters")]
-            if not client_updates:
-                print("No client updates available for anomaly detection.")
-                return aggregated_result  # Skip anomaly detection if no updates
+        # Print statements for debugging
+        print(f"Round {rnd} - Loss: {loss_value}, Accuracy: {metrics['accuracy']}")
+        
+        # Collect client updates for anomaly detection
+        client_updates = [res.parameters for res in results if hasattr(res, "parameters")]
+        if not client_updates:
+            print("No client updates available for anomaly detection.")
+            return aggregated_result  # Skip anomaly detection if no updates
 
-            updates_matrix = np.array([np.concatenate([p.flatten() for p in update]) for update in client_updates])
-            
-            # Ensure updates_matrix has valid data before detecting anomalies
-            if updates_matrix.size == 0:
-                print("Empty updates matrix, skipping anomaly detection.")
-                return aggregated_result
-            
-            # Detect anomalies with Z-score
-            zscore_anomalies = detect_anomalies_zscore(updates_matrix, self.zscore_threshold)
-            
-            # Detect anomalies with Autoencoder
-            autoencoder_anomalies = detect_anomalies_autoencoder(self.autoencoder, updates_matrix, self.reconstruction_threshold)
-            
-            # Combine detected anomalies and isolate them
-            anomalies = set(zscore_anomalies + autoencoder_anomalies)
-            filtered_results = [res for i, res in enumerate(results) if i not in anomalies]
-            
-            print(f"Round {rnd}: Detected {len(anomalies)} anomalous clients, excluded from aggregation.")
-            
-            # Continue with aggregation on filtered results
-            return super().aggregate_fit(rnd, filtered_results, failures)
+        updates_matrix = np.array([np.concatenate([p.flatten() for p in update]) for update in client_updates])
+        
+        # Ensure updates_matrix has valid data before detecting anomalies
+        if updates_matrix.size == 0:
+            print("Empty updates matrix, skipping anomaly detection.")
+            return aggregated_result
+        
+        # Detect anomalies with Z-score
+        zscore_anomalies = detect_anomalies_zscore(updates_matrix, self.zscore_threshold)
+        
+        # Detect anomalies with Autoencoder
+        autoencoder_anomalies = detect_anomalies_autoencoder(self.autoencoder, updates_matrix, self.reconstruction_threshold)
+        
+        # Combine detected anomalies and isolate them
+        anomalies = set(zscore_anomalies + autoencoder_anomalies)
+        filtered_results = [res for i, res in enumerate(results) if i not in anomalies]
+        
+        print(f"Round {rnd}: Detected {len(anomalies)} anomalous clients, excluded from aggregation.")
+        
+        # Continue with aggregation on filtered results
+        return super().aggregate_fit(rnd, filtered_results, failures)
 
-
-
-# Legacy mode
+# Visualization should be called after server rounds complete
 if __name__ == "__main__":
     # Start the Flower server with the custom anomaly detection strategy
     start_server(
@@ -122,6 +123,11 @@ if __name__ == "__main__":
             reconstruction_threshold=0.05
         ),
     )
+
+    # Verify rounds, loss, and accuracy contain data before plotting
+    print("Rounds:", rounds)
+    print("Loss:", loss)
+    print("Accuracy:", accuracy)
 
     # Plot the metrics after the server has completed training rounds
     plot_metrics(rounds, loss, accuracy)
