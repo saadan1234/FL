@@ -58,13 +58,14 @@ def detect_anomalies_autoencoder(model, updates, threshold=0.05):
     anomalies = [i for i, error in enumerate(reconstruction_errors) if error > threshold]
     return anomalies
 
-
 class CustomFedAvg(FedAvg):
-    def __init__(self, zscore_threshold=2.5, reconstruction_threshold=0.05, **kwargs):
+    def __init__(self, zscore_threshold=2.5, reconstruction_threshold=0.05, momentum=0.9, **kwargs):
         super().__init__(**kwargs)
         self.zscore_threshold = zscore_threshold
         self.reconstruction_threshold = reconstruction_threshold
+        self.momentum = momentum
         self.autoencoder = autoencoder
+        self.previous_update = None  # Initialize the previous update to None
     
     def aggregate_evaluate(self, rnd: int, results, failures):
         # Call the aggregate_evaluate function from the superclass
@@ -108,19 +109,35 @@ class CustomFedAvg(FedAvg):
         
         print(f"Round {rnd}: Detected {len(anomalies)} anomalous clients, excluded from aggregation.")
         
+        # Apply momentum to filtered results
+        filtered_updates = np.array([np.concatenate([p.flatten() for p in res.parameters]) for res in filtered_results])
+        aggregated_update = np.mean(filtered_updates, axis=0)
+        
+        # If a previous update exists, add momentum
+        if self.previous_update is not None:
+            aggregated_update = self.momentum * self.previous_update + (1 - self.momentum) * aggregated_update
+        
+        # Update the previous update with the current one
+        self.previous_update = aggregated_update
+        
+        # Reconstruct the update parameters with the same shape as the model parameters
+        aggregated_update_params = [np.reshape(aggregated_update[i:i + len(layer)], layer.shape)
+                                    for i, layer in enumerate(self.model.get_weights())]
+        
         # Continue with aggregation on filtered results
-        return super().aggregate_fit(rnd, filtered_results, failures)
+        return super().aggregate_fit(rnd, filtered_results, failures, parameters=aggregated_update_params)
 
 # Visualization should be called after server rounds complete
 if __name__ == "__main__":
     # Start the Flower server with the custom anomaly detection strategy
     start_server(
         server_address="0.0.0.0:8080",
-        config=ServerConfig(num_rounds=5),
+        config=ServerConfig(num_rounds=10),
         strategy=CustomFedAvg(
             evaluate_metrics_aggregation_fn=weighted_average,
             zscore_threshold=2.5,
-            reconstruction_threshold=0.05
+            reconstruction_threshold=0.05,
+            momentum=0.9
         ),
     )
 
