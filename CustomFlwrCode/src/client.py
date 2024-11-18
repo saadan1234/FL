@@ -4,58 +4,126 @@ import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 import pickle
-from datasets import load_dataset
+from datasets import load_dataset 
 from transformers import AutoTokenizer, DataCollatorWithPadding
 from flwr.client import NumPyClient, start_client
 from data import get_model, train_model_with_progress
 
-
-def load_and_filter_dataset(dataset):
-    """Load and filter dataset from Hugging Face."""
-    dataset = load_dataset(dataset)
-
-    def filter_nulls(example):
-        return all(example[column] is not None for column in ['id', 'label', 'text'])
-    return dataset.filter(filter_nulls)
+from datasets import load_dataset
+from transformers import DataCollatorWithPadding
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+import numpy as np
 
 
-def tokenize_data(dataset, tokenizer):
-    """Tokenize the text data using a tokenizer, retaining the label column."""
-    def tokenize_function(examples):
-        return tokenizer(examples['text'], truncation=True, padding='max_length')
+def load_and_filter_dataset(dataset_name, dataset_type, input_column=None, instructions_column=None, output_column=None):
+    """
+    Load a dataset from Hugging Face and filter/prepare it based on the type.
     
-    tokenized_data = dataset['train'].map(tokenize_function, batched=True)
+    Parameters:
+        dataset_name (str): Name of the dataset from Hugging Face.
+        dataset_type (str): Type of dataset ('text' for LLM datasets, 'traditional' for structured data).
+        input_column (str): Name of the input column (for text datasets).
+        instructions_column (str): Name of the instructions column (optional for text datasets).
+        output_column (str): Name of the output column (for labels).
+
+    Returns:
+        dataset: Loaded and optionally filtered dataset.
+    """
+    dataset = load_dataset(dataset_name)
+    
+    if dataset_type == 'text':
+        # For text datasets, filter out null values in the specified columns
+        def filter_nulls(example):
+            required_columns = [input_column, output_column]
+            if instructions_column:
+                required_columns.append(instructions_column)
+            return all(example[column] is not None for column in required_columns)
+        
+        dataset = dataset.filter(filter_nulls)
+    elif dataset_type == 'traditional':
+        # For traditional datasets like CIFAR100 or MNIST, no filtering is needed
+        pass  # Assume the dataset is already structured appropriately
+    
+    return dataset
+
+
+def tokenize_or_prepare_data(dataset, tokenizer=None, dataset_type='text'):
+    """
+    Tokenize or preprocess the dataset based on the type.
+    
+    Parameters:
+        dataset: Loaded dataset object.
+        tokenizer: Tokenizer object for text datasets.
+        dataset_type (str): Type of dataset ('text' or 'traditional').
+
+    Returns:
+        tokenized_data: Tokenized or preprocessed dataset.
+    """
+    if dataset_type == 'text':
+        def tokenize_function(examples):
+            return tokenizer(examples['text'], truncation=True, padding='max_length')
+
+        tokenized_data = dataset['train'].map(tokenize_function, batched=True)
+    elif dataset_type == 'traditional':
+        # Extract features and labels directly for traditional datasets
+        tokenized_data = {
+            'features': np.array(dataset['train']['image']),
+            'labels': np.array(dataset['train']['label'])
+        }
+    
     return tokenized_data
 
 
-def preprocess_data(tokenized_data, tokenizer):
-    """Preprocess tokenized data and normalize."""
-    features = ['input_ids', 'attention_mask', 'label']
-    tokenized_data = tokenized_data.remove_columns(
-        [column for column in tokenized_data.column_names if column not in features]
-    )
-    data_dicts = [dict(zip(features, [ex[feature] for feature in features if feature in ex])) for ex in tokenized_data]
+def preprocess_data(tokenized_data, tokenizer=None, dataset_type='text'):
+    """
+    Preprocess the data and normalize features.
+    
+    Parameters:
+        tokenized_data: Tokenized or preprocessed data.
+        tokenizer: Tokenizer object (only for text datasets).
+        dataset_type (str): Type of dataset ('text' or 'traditional').
 
-    # Use DataCollatorWithPadding to pad data
-    data_collator = DataCollatorWithPadding(tokenizer=tokenizer, return_tensors="np")
-    padded_data = data_collator(data_dicts)
+    Returns:
+        x, labels: Normalized features and corresponding labels.
+    """
+    if dataset_type == 'text':
+        features = ['input_ids', 'attention_mask', 'label']
+        tokenized_data = tokenized_data.remove_columns(
+            [column for column in tokenized_data.column_names if column not in features]
+        )
+        data_dicts = [dict(zip(features, [ex[feature] for feature in features if feature in ex])) for ex in tokenized_data]
+        
+        # Use DataCollatorWithPadding to pad data
+        data_collator = DataCollatorWithPadding(tokenizer=tokenizer, return_tensors="np")
+        padded_data = data_collator(data_dicts)
 
-    # Extract input_ids and normalize
-    input_ids = padded_data['input_ids']
-    labels = np.array([ex['label'] for ex in data_dicts])  # Use the labels directly
+        # Extract input_ids and normalize
+        input_ids = padded_data['input_ids']
+        labels = np.array([ex['label'] for ex in data_dicts])  # Use the labels directly
 
-    # MinMax Normalization
-    scaler = MinMaxScaler()
-    x = scaler.fit_transform(input_ids)
-
+        # MinMax Normalization
+        scaler = MinMaxScaler()
+        x = scaler.fit_transform(input_ids)
+    elif dataset_type == 'traditional':
+        # Normalize images (assuming pixel values range from 0-255)
+        x = tokenized_data['features'] / 255.0
+        labels = tokenized_data['labels']
+    
     return x, labels
 
 
-
-
-
 def split_data(x, labels):
-    """Split the data into training and testing sets."""
+    """
+    Split the data into training and testing sets.
+    
+    Parameters:
+        x: Normalized features.
+        labels: Corresponding labels.
+
+    Returns:
+        X_train, X_test, Y_train, Y_test: Train-test split data.
+    """
     X_train, X_test, Y_train, Y_test = train_test_split(
         x, 
         labels, 
@@ -63,6 +131,31 @@ def split_data(x, labels):
         random_state=42  # For reproducibility
     )
     return X_train, X_test, Y_train, Y_test
+
+
+def process_dataset(dataset_name, dataset_type, tokenizer=None, input_column=None, instructions_column=None, output_column=None):
+    """
+    Generalized function to load, preprocess, and split a dataset.
+
+    Parameters:
+        dataset_name (str): Name of the dataset from Hugging Face.
+        dataset_type (str): Type of dataset ('text' or 'traditional').
+        tokenizer: Tokenizer object (only for text datasets).
+        input_column (str): Name of the input column (for text datasets).
+        instructions_column (str): Name of the instructions column (optional for text datasets).
+        output_column (str): Name of the output column (for labels).
+
+    Returns:
+        X_train, X_test, Y_train, Y_test: Train-test split data.
+    """
+    dataset = load_and_filter_dataset(
+        dataset_name, dataset_type, input_column, instructions_column, output_column
+    )
+    tokenized_data = tokenize_or_prepare_data(dataset, tokenizer, dataset_type)
+    x, labels = preprocess_data(tokenized_data, tokenizer, dataset_type)
+    return split_data(x, labels)
+
+
 
 
 def save_data(X_train, Y_train, X_test, Y_test, filename='data.pkl'):
@@ -99,23 +192,27 @@ def get_flower_client(model, X_train, Y_train, X_test, Y_test):
             model.set_weights(parameters)
             loss, accuracy = model.evaluate(X_test, Y_test)
             return loss, len(X_test), {"accuracy": accuracy}
-
     return FlowerClient()
 
 
 def main():
-    # Load and preprocess the dataset
-    dataset = load_and_filter_dataset('fathyshalab/massive_iot')
-    tokenizer = AutoTokenizer.from_pretrained('bert-base-cased')
-    tokenized_data = tokenize_data(dataset, tokenizer)
-
-    # Convert the tokenized data into usable format
-    df = pd.DataFrame(dataset['train'])
-    # In main()
-    x, labels = preprocess_data(tokenized_data, tokenizer)
     
-    # Split the data into train and test sets
-    X_train, X_test, Y_train, Y_test = split_data(x, labels)
+
+    # Example Usage:
+    # Text-based dataset
+    # tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+    # X_train, X_test, Y_train, Y_test = process_dataset(
+    #     'imdb', 'text', tokenizer=tokenizer, input_column='text', output_column='label'
+    # )
+
+    # Traditional dataset
+    # X_train, X_test, Y_train, Y_test = process_dataset('cifar100', 'traditional')
+    # Load and preprocess the dataset
+    
+    tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+    X_train, X_test, Y_train, Y_test = process_dataset(
+        'fathyshalab/massive_iot', 'text', tokenizer=tokenizer, input_column='text', output_column='label'
+    )
     
     # Save the data
     save_data(X_train, Y_train, X_test, Y_test)

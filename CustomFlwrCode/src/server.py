@@ -80,7 +80,7 @@ class CustomFedAvg(FedAvg):
 
         return super().aggregate_fit(rnd, filtered_results, failures, parameters=aggregated_update_params)
 
-def start_federated_server(num_rounds: int = 10):
+def start_federated_server(num_rounds: int = 5):
     """Start the federated server with the custom strategy."""
     start_server(
         server_address="0.0.0.0:8080",
