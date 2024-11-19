@@ -1,39 +1,18 @@
 import numpy as np
-import pandas as pd
+import pickle
 import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
-import pickle
-from datasets import load_dataset 
+from datasets import load_dataset
 from transformers import AutoTokenizer, DataCollatorWithPadding
 from flwr.client import NumPyClient, start_client
-from data import get_model, train_model_with_progress
-
-from datasets import load_dataset
-from transformers import DataCollatorWithPadding
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split
-import numpy as np
+from utils import split_data
+import multiprocessing
 
 
-def load_and_filter_dataset(dataset_name, dataset_type, input_column=None, instructions_column=None, output_column=None):
-    """
-    Load a dataset from Hugging Face and filter/prepare it based on the type.
-    
-    Parameters:
-        dataset_name (str): Name of the dataset from Hugging Face.
-        dataset_type (str): Type of dataset ('text' for LLM datasets, 'traditional' for structured data).
-        input_column (str): Name of the input column (for text datasets).
-        instructions_column (str): Name of the instructions column (optional for text datasets).
-        output_column (str): Name of the output column (for labels).
-
-    Returns:
-        dataset: Loaded and optionally filtered dataset.
-    """
+def load_dataset_hf(dataset_name, input_column=None, instructions_column=None, output_column=None, dataset_type='traditional'):
     dataset = load_dataset(dataset_name)
-    
-    if dataset_type == 'text':
-        # For text datasets, filter out null values in the specified columns
+    if dataset_type == 'text' and input_column and output_column:
         def filter_nulls(example):
             required_columns = [input_column, output_column]
             if instructions_column:
@@ -41,204 +20,164 @@ def load_and_filter_dataset(dataset_name, dataset_type, input_column=None, instr
             return all(example[column] is not None for column in required_columns)
         
         dataset = dataset.filter(filter_nulls)
-    elif dataset_type == 'traditional':
-        # For traditional datasets like CIFAR100 or MNIST, no filtering is needed
-        pass  # Assume the dataset is already structured appropriately
-    
     return dataset
 
 
-def tokenize_or_prepare_data(dataset, tokenizer=None, dataset_type='text'):
-    """
-    Tokenize or preprocess the dataset based on the type.
-    
-    Parameters:
-        dataset: Loaded dataset object.
-        tokenizer: Tokenizer object for text datasets.
-        dataset_type (str): Type of dataset ('text' or 'traditional').
-
-    Returns:
-        tokenized_data: Tokenized or preprocessed dataset.
-    """
+def prepare_data(dataset, tokenizer=None, input_col=None, output_col=None, dataset_type='traditional'):
     if dataset_type == 'text':
         def tokenize_function(examples):
-            return tokenizer(examples['text'], truncation=True, padding='max_length')
-
-        tokenized_data = dataset['train'].map(tokenize_function, batched=True)
+            return tokenizer(examples[input_col], truncation=True, padding='max_length')
+        dataset = dataset.map(tokenize_function, batched=True)
     elif dataset_type == 'traditional':
-        # Extract features and labels directly for traditional datasets
-        tokenized_data = {
-            'features': np.array(dataset['train']['image']),
-            'labels': np.array(dataset['train']['label'])
-        }
-    
-    return tokenized_data
+        def process_features(example):
+            example['features'] = np.array(example[input_col]).flatten()
+            example['labels'] = example[output_col]
+            return example
+        dataset = dataset.map(process_features)
+    return dataset
 
 
-def preprocess_data(tokenized_data, tokenizer=None, dataset_type='text'):
+def preprocess_and_split(dataset, tokenizer=None, dataset_type='traditional', normalize=True, input_col=None, output_col=None):
     """
-    Preprocess the data and normalize features.
-    
-    Parameters:
-        tokenized_data: Tokenized or preprocessed data.
-        tokenizer: Tokenizer object (only for text datasets).
-        dataset_type (str): Type of dataset ('text' or 'traditional').
-
-    Returns:
-        x, labels: Normalized features and corresponding labels.
+    Preprocess and split data into training and test sets.
     """
     if dataset_type == 'text':
-        features = ['input_ids', 'attention_mask', 'label']
-        tokenized_data = tokenized_data.remove_columns(
-            [column for column in tokenized_data.column_names if column not in features]
-        )
-        data_dicts = [dict(zip(features, [ex[feature] for feature in features if feature in ex])) for ex in tokenized_data]
-        
-        # Use DataCollatorWithPadding to pad data
+        # Extract examples as dictionaries
+        examples = [dataset[i] for i in range(len(dataset))]
         data_collator = DataCollatorWithPadding(tokenizer=tokenizer, return_tensors="np")
-        padded_data = data_collator(data_dicts)
+        batch = data_collator(examples)  # Pass list of dictionaries
+        x = batch["input_ids"]
+        y = np.array(batch["labels"])
+    else:
+        # For traditional datasets, process the dataset normally
+        x = np.array([example[input_col] for example in dataset])
+        y = np.array([example[output_col] for example in dataset])
+        
+        # Flatten the data if it has more than 2 dimensions (e.g., image data)
+        if x.ndim > 2:
+            x = x.reshape(x.shape[0], -1)
 
-        # Extract input_ids and normalize
-        input_ids = padded_data['input_ids']
-        labels = np.array([ex['label'] for ex in data_dicts])  # Use the labels directly
-
-        # MinMax Normalization
+    if normalize and dataset_type == 'traditional':
         scaler = MinMaxScaler()
-        x = scaler.fit_transform(input_ids)
-    elif dataset_type == 'traditional':
-        # Normalize images (assuming pixel values range from 0-255)
-        x = tokenized_data['features'] / 255.0
-        labels = tokenized_data['labels']
-    
-    return x, labels
+        x = scaler.fit_transform(x)
+
+    return train_test_split(x, y, test_size=0.2, random_state=42)
 
 
-def split_data(x, labels):
-    """
-    Split the data into training and testing sets.
-    
-    Parameters:
-        x: Normalized features.
-        labels: Corresponding labels.
-
-    Returns:
-        X_train, X_test, Y_train, Y_test: Train-test split data.
-    """
-    X_train, X_test, Y_train, Y_test = train_test_split(
-        x, 
-        labels, 
-        test_size=0.2,  # Equivalent to test_samples_per_block / samples_per_block
-        random_state=42  # For reproducibility
-    )
-    return X_train, X_test, Y_train, Y_test
-
-
-def process_dataset(dataset_name, dataset_type, tokenizer=None, input_column=None, instructions_column=None, output_column=None):
-    """
-    Generalized function to load, preprocess, and split a dataset.
-
-    Parameters:
-        dataset_name (str): Name of the dataset from Hugging Face.
-        dataset_type (str): Type of dataset ('text' or 'traditional').
-        tokenizer: Tokenizer object (only for text datasets).
-        input_column (str): Name of the input column (for text datasets).
-        instructions_column (str): Name of the instructions column (optional for text datasets).
-        output_column (str): Name of the output column (for labels).
-
-    Returns:
-        X_train, X_test, Y_train, Y_test: Train-test split data.
-    """
-    dataset = load_and_filter_dataset(
-        dataset_name, dataset_type, input_column, instructions_column, output_column
-    )
-    tokenized_data = tokenize_or_prepare_data(dataset, tokenizer, dataset_type)
-    x, labels = preprocess_data(tokenized_data, tokenizer, dataset_type)
-    return split_data(x, labels)
-
-
-
-
-def save_data(X_train, Y_train, X_test, Y_test, filename='data.pkl'):
-    """Save the preprocessed data to a file."""
+def save_data(filename, X_train, Y_train, X_test, Y_test):
     with open(filename, 'wb') as f:
         pickle.dump((X_train, Y_train, X_test, Y_test), f)
 
 
-def load_data(filename='data.pkl'):
-    """Load preprocessed data from a file."""
+def load_data(filename):
     with open(filename, 'rb') as f:
-        X_train, Y_train, X_test, Y_test = pickle.load(f)
-    return X_train, Y_train, X_test, Y_test
+        return pickle.load(f)
 
 
-def create_model(vocab_size, embedding_dim, input_length, num_classes):
-    """Create and compile the model."""
-    model = get_model(vocab_size, embedding_dim, input_length, num_classes)
+def build_model(input_shape, num_classes, model_type='dense'):
+    if model_type == 'dense':
+        model = tf.keras.Sequential([
+            tf.keras.layers.Dense(128, activation='relu', input_shape=(input_shape,)),
+            tf.keras.layers.Dense(64, activation='relu'),
+            tf.keras.layers.Dense(num_classes, activation='softmax')
+        ])
+    elif model_type == 'lstm':
+        model = tf.keras.Sequential([
+            tf.keras.layers.LSTM(128, input_shape=input_shape, return_sequences=False),
+            tf.keras.layers.Dense(64, activation='relu'),
+            tf.keras.layers.Dense(num_classes, activation='softmax')
+        ])
+    else:
+        raise ValueError("Unsupported model type. Choose 'dense' or 'lstm'.")
+    
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     return model
 
 
-def get_flower_client(model, X_train, Y_train, X_test, Y_test):
-    """Define and return a Flower client."""
+def flower_weights_to_keras_weights(parameters):
+    return [np.array(w, dtype=np.float32) for w in parameters]
+
+
+def create_flower_client(model, X_train, Y_train, X_test, Y_test):
     class FlowerClient(NumPyClient):
         def get_parameters(self, config):
             return model.get_weights()
 
         def fit(self, parameters, config):
-            model.set_weights(parameters)
-            train_model_with_progress(model, X_train, Y_train, epochs=5, batch_size=32)
+            keras_weights = flower_weights_to_keras_weights(parameters)
+            if len(keras_weights) != len(model.get_weights()):
+                raise ValueError(f"Weight mismatch: Expected {len(model.get_weights())}, got {len(keras_weights)}")
+            model.set_weights(keras_weights)
+            model.fit(X_train, Y_train, epochs=10, batch_size=32, verbose=1)
             return model.get_weights(), len(X_train), {}
 
         def evaluate(self, parameters, config):
-            model.set_weights(parameters)
+            keras_weights = flower_weights_to_keras_weights(parameters)
+            if len(keras_weights) != len(model.get_weights()):
+                raise ValueError(f"Weight mismatch: Expected {len(model.get_weights())}, got {len(keras_weights)}")
+            model.set_weights(keras_weights)
             loss, accuracy = model.evaluate(X_test, Y_test)
             return loss, len(X_test), {"accuracy": accuracy}
     return FlowerClient()
 
 
-def main():
-    
+import multiprocessing
 
-    # Example Usage:
-    # Text-based dataset
-    # tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-    # X_train, X_test, Y_train, Y_test = process_dataset(
-    #     'imdb', 'text', tokenizer=tokenizer, input_column='text', output_column='label'
-    # )
+def main(dataset_name, dataset_type='traditional', model_type='dense', input_column=None, output_column=None):
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased") if dataset_type == 'text' else None
 
-    # Traditional dataset
-    # X_train, X_test, Y_train, Y_test = process_dataset('cifar100', 'traditional')
-    # Load and preprocess the dataset
-    
-    tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-    X_train, X_test, Y_train, Y_test = process_dataset(
-        'fathyshalab/massive_iot', 'text', tokenizer=tokenizer, input_column='text', output_column='label'
-    )
-    
-    # Save the data
-    save_data(X_train, Y_train, X_test, Y_test)
-    
-    # Load the data
-    X_train, Y_train, X_test, Y_test = load_data()
+    # Load and prepare the dataset
+    dataset = load_dataset_hf(dataset_name, input_column=input_column, output_column=output_column, dataset_type=dataset_type)
+    dataset = prepare_data(dataset, tokenizer, input_col=input_column, output_col=output_column, dataset_type=dataset_type)
+    X_train, X_test, Y_train, Y_test = preprocess_and_split(dataset['train'], tokenizer, dataset_type, 
+                                                            input_col=input_column, output_col=output_column)
 
-    # Define model parameters
-    vocab_size = 10000  # Adjust as needed
-    embedding_dim = 100  # Adjust as needed
-    input_length = X_train.shape[1]
+    # Save and reload data for simplicity (optional)
+    save_data('data.pkl', X_train, Y_train, X_test, Y_test)
+    X_train, Y_train, X_test, Y_test = load_data('data.pkl')
+
+    # Split the dataset into two clients
+    num_clients = 2
+    client_data = split_data(X_train, Y_train, num_clients, iid=True)
+
+    input_shape = X_train.shape[1]
+    if model_type == 'lstm':
+        for client_id in range(1, num_clients + 1):
+            client_data[client_id] = (
+                client_data[client_id][0].reshape(client_data[client_id][0].shape[0], input_shape, 1),
+                client_data[client_id][1]
+            )
+
     num_classes = len(np.unique(Y_train))
 
-    # Create the model
-    model = create_model(vocab_size, embedding_dim, input_length, num_classes)
+    def start_flower_client(client_id, client_model, X_client_train, Y_client_train, X_client_test, Y_client_test):
+        """Function to start a Flower client."""
+        client = create_flower_client(client_model, X_client_train, Y_client_train, X_client_test, Y_client_test)
+        print(f"Starting Client {client_id}")
+        start_client(server_address=f"127.0.0.{client_id}:8080", client=client)
 
-    # Get the Flower client
-    client = get_flower_client(model, X_train, Y_train, X_test, Y_test)
+    # Create and start clients in parallel using multiprocessing
+    processes = []
+    client_id=2
+    X_client_train, Y_client_train = client_data[client_id]
+    client_model = build_model(input_shape, num_classes, model_type)
 
-    # Start the Flower client
-    start_client(
-        server_address="127.0.0.2:8080",
-        client=client.to_client()
-    )
+    # Use a subset of the test data for evaluation per client
+    client_test_split = split_data(X_test, Y_test, num_clients, iid=True)
+    X_client_test, Y_client_test = client_test_split[client_id]
+
+    start_flower_client(client_id, client_model, X_client_train, Y_client_train, X_client_test, Y_client_test)
+
+    # Wait for all processes to complete
+    for process in processes:
+        process.join()
 
 
-# Run the main function
 if __name__ == "__main__":
-    main()
+    main(
+        dataset_name='uoft-cs/cifar100',
+        dataset_type='traditional',
+        model_type='dense',
+        input_column='img',
+        output_column='fine_label'
+    )

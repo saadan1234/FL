@@ -1,10 +1,10 @@
 import numpy as np
-from typing import List, Tuple, Dict
+from typing import List, Tuple
 from flwr.server import start_server, ServerConfig
 from flwr.server.strategy import FedAvg
 from flwr.common import Metrics
-from visualize import plot_metrics
 from scipy.stats import zscore
+from utils import plot_metrics
 
 # Global lists to track rounds, loss, and accuracy
 rounds = []
@@ -29,6 +29,7 @@ class CustomFedAvg(FedAvg):
         self.zscore_threshold = zscore_threshold
         self.momentum = momentum
         self.previous_update = None  # To store previous update for momentum application
+        self.previous_accuracy = None  # For smoothing global accuracy
 
     def aggregate_evaluate(self, rnd: int, results, failures):
         """Aggregate evaluation results and detect anomalies."""
@@ -38,10 +39,24 @@ class CustomFedAvg(FedAvg):
         rounds.append(rnd)
         if aggregated_result:
             loss_value, metrics = aggregated_result
-            loss.append(loss_value)
-            accuracy.append(metrics["accuracy"])
 
-        print(f"Round {rnd} - Loss: {loss_value}, Accuracy: {metrics['accuracy']}")
+            # Smooth accuracy using momentum
+            current_accuracy = metrics["accuracy"]
+            if self.previous_accuracy is not None:
+                smoothed_accuracy = (
+                    self.momentum * self.previous_accuracy
+                    + (1 - self.momentum) * current_accuracy
+                )
+            else:
+                smoothed_accuracy = current_accuracy
+
+            self.previous_accuracy = smoothed_accuracy
+
+            # Store smoothed metrics
+            loss.append(loss_value)
+            accuracy.append(smoothed_accuracy)
+
+        print(f"Round {rnd} - Loss: {loss_value}, Smoothed Accuracy: {accuracy[-1]}")
 
         # Collect client updates for anomaly detection
         client_updates = [res.parameters for res in results if hasattr(res, "parameters")]
@@ -80,7 +95,7 @@ class CustomFedAvg(FedAvg):
 
         return super().aggregate_fit(rnd, filtered_results, failures, parameters=aggregated_update_params)
 
-def start_federated_server(num_rounds: int = 5):
+def start_federated_server(num_rounds: int = 10):
     """Start the federated server with the custom strategy."""
     start_server(
         server_address="0.0.0.0:8080",
