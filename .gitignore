@@ -4,3 +4,5 @@ venv
 outputs
 data
 __pycache__
+*.pkl
+CustomFlwrCode/src/data.pkl
