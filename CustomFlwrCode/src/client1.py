@@ -22,7 +22,7 @@ def main(dataset_name, dataset_type='traditional', model_type='dense', input_col
     num_clients = 2
     client_data = split_data(X_train, Y_train, num_clients, iid=True)
 
-    input_shape = X_train.shape[1]
+    input_shape = X_train.shape[0]
     if model_type == 'lstm':
         for client_id in range(1, num_clients + 1):
             client_data[client_id] = (

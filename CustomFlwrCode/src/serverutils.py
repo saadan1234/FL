@@ -5,6 +5,23 @@ from scipy.stats import zscore
 import yaml
 from utils import plot_metrics
 
+# Weighted average for fit metrics
+def fit_metrics_weighted_average(metrics):
+    """Aggregate fit metrics using a weighted average."""
+    total_examples = sum(num_examples for num_examples, _ in metrics)
+    if total_examples == 0:
+        return {}
+
+    aggregated_metrics = {}
+    for num_examples, m in metrics:
+        for key, value in m.items():
+            if key not in aggregated_metrics:
+                aggregated_metrics[key] = 0
+            aggregated_metrics[key] += num_examples * value
+
+    # Divide by the total number of examples to compute weighted averages
+    aggregated_metrics = {key: value / total_examples for key, value in aggregated_metrics.items()}
+    return aggregated_metrics
 
 def load_config(file_path):
     """Load YAML configuration."""

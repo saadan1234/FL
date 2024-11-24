@@ -21,7 +21,7 @@ def create_flower_client(model, X_train, Y_train, X_test, Y_test):
             model.set_weights(keras_weights)
 
             # Train the model
-            model.fit(X_train, Y_train, epochs=1, batch_size=32, verbose=1)
+            model.fit(X_train, Y_train, epochs=10, batch_size=32, verbose=1)
             return model.get_weights(), len(X_train), {}
 
         def evaluate(self, parameters, config):
@@ -31,7 +31,7 @@ def create_flower_client(model, X_train, Y_train, X_test, Y_test):
             model.set_weights(keras_weights)
             loss, accuracy = model.evaluate(X_test, Y_test)
             return loss, len(X_test), {"accuracy": accuracy}
-    return FlowerClient()  
+    return FlowerClient().to_client()
 
 def load_config(file_path):
     """Load YAML configuration."""
@@ -73,8 +73,8 @@ def preprocess_and_split(dataset, tokenizer=None, dataset_type='traditional', no
         examples = [dataset[i] for i in range(len(dataset))]
         data_collator = DataCollatorWithPadding(tokenizer=tokenizer, return_tensors="np")
         batch = data_collator(examples)  # Pass list of dictionaries
-        x = batch["input_ids"]
-        y = np.array(batch["labels"])
+        x = batch[input_col]
+        y = np.array(batch[output_col])
     else:
         # For traditional datasets, process the dataset normally
         x = np.array([example[input_col] for example in dataset])
