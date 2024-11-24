@@ -1,5 +1,5 @@
 server:
-  num_rounds: 10
+  num_rounds: 2
   zscore_threshold: 2.5
   momentum: 0.9
   server_address: "0.0.0.0:8080"

@@ -1,7 +1,7 @@
 from flwr.server import start_server, ServerConfig
 from flwr.server.strategy import FedAvg
 import numpy as np
-from serverutils import detect_anomalies_zscore, fit_metrics_weighted_average, load_config, plot_training_metrics, weighted_average
+from serverutils import detect_anomalies_zscore, load_config, plot_training_metrics, weighted_average
 
 # Global lists to track rounds, loss, and accuracy
 rounds = []
@@ -88,7 +88,6 @@ def start_federated_server(num_rounds: int, zscore_threshold: float, momentum: f
         config=ServerConfig(num_rounds=num_rounds),
         strategy=CustomFedAvg(
             evaluate_metrics_aggregation_fn=weighted_average,
-            # fit_metrics_aggregation_fn=fit_metrics_weighted_average, 
             zscore_threshold=zscore_threshold,
             momentum=momentum
         ),
