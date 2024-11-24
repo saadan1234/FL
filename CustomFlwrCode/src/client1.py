@@ -1,9 +1,9 @@
 import numpy as np
-from flwr.client import start_client
 from transformers import AutoTokenizer
 from model import build_model
 from clientutils import create_flower_client, load_config, load_data, load_dataset_hf, prepare_data, preprocess_and_split, save_data
 from utils import split_data
+from flwr.client import start_client
 
 def main(dataset_name, dataset_type='traditional', model_type='dense', input_column=None, output_column=None):
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased") if dataset_type == 'text' else None
@@ -39,7 +39,7 @@ def main(dataset_name, dataset_type='traditional', model_type='dense', input_col
         start_client(server_address=f"127.0.0.{client_id}:8080", client=client)
 
     # Create and start clients in parallel using multiprocessing
-    client_id=2
+    client_id=1
     X_client_train, Y_client_train = client_data[client_id]
     client_model = build_model(input_shape, num_classes, model_type)
 
@@ -52,12 +52,12 @@ def main(dataset_name, dataset_type='traditional', model_type='dense', input_col
 
 if __name__ == "__main__":
     config = load_config("config.yaml")
-    client2_config = config["client2"]
+    client1_config = config["client1"]
 
     main(
-        dataset_name=client2_config["dataset_name"],
-        dataset_type=client2_config["dataset_type"],
-        model_type=client2_config["model_type"],
-        input_column=client2_config["input_column"],
-        output_column=client2_config["output_column"]
+        dataset_name=client1_config["dataset_name"],
+        dataset_type=client1_config["dataset_type"],
+        model_type=client1_config["model_type"],
+        input_column=client1_config["input_column"],
+        output_column=client1_config["output_column"]
     )

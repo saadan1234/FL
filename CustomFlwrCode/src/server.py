@@ -1,27 +1,13 @@
-import numpy as np
-from typing import List, Tuple
 from flwr.server import start_server, ServerConfig
 from flwr.server.strategy import FedAvg
-from flwr.common import Metrics
-from scipy.stats import zscore
-from utils import plot_metrics
+import numpy as np
+from serverutils import detect_anomalies_zscore, load_config, plot_training_metrics, weighted_average
 
 # Global lists to track rounds, loss, and accuracy
 rounds = []
 loss = []
 accuracy = []
 
-def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
-    """Calculate the weighted average of metrics for aggregation."""
-    accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
-    examples = [num_examples for num_examples, _ in metrics]
-    return {"accuracy": sum(accuracies) / sum(examples)}
-
-def detect_anomalies_zscore(updates: np.ndarray, threshold: float = 2.5) -> List[int]:
-    """Detect anomalies using Z-score."""
-    z_scores = np.array([zscore(update) for update in updates])
-    anomalies = [i for i, z in enumerate(z_scores) if np.any(np.abs(z) > threshold)]
-    return anomalies
 
 class CustomFedAvg(FedAvg):
     def __init__(self, zscore_threshold: float = 2.5, momentum: float = 0.9, **kwargs):
@@ -95,32 +81,36 @@ class CustomFedAvg(FedAvg):
 
         return super().aggregate_fit(rnd, filtered_results, failures, parameters=aggregated_update_params)
 
-def start_federated_server(num_rounds: int = 10):
+def start_federated_server(num_rounds: int, zscore_threshold: float, momentum: float, server_address: str):
     """Start the federated server with the custom strategy."""
     start_server(
-        server_address="0.0.0.0:8080",
+        server_address=server_address,
         config=ServerConfig(num_rounds=num_rounds),
         strategy=CustomFedAvg(
             evaluate_metrics_aggregation_fn=weighted_average,
-            zscore_threshold=2.5,
-            momentum=0.9
+            zscore_threshold=zscore_threshold,
+            momentum=momentum
         ),
     )
 
-def plot_training_metrics():
-    """Plot the training loss and accuracy after all rounds."""
-    print("Rounds:", rounds)
-    print("Loss:", loss)
-    print("Accuracy:", accuracy)
-    plot_metrics(rounds, loss, accuracy)
+
 
 def main():
     """Main function to set up and run the federated learning server."""
     # Start the federated server with the custom strategy
-    start_federated_server()
+    config = load_config("config.yaml")
+    server_config = config["server"]
+
+    # Start the server with YAML config
+    start_federated_server(
+        num_rounds=server_config["num_rounds"],
+        zscore_threshold=server_config["zscore_threshold"],
+        momentum=server_config["momentum"],
+        server_address=server_config["server_address"],
+    )
 
     # Plot the metrics after training rounds are completed
-    plot_training_metrics()
+    plot_training_metrics(rounds, loss, accuracy)
 
 if __name__ == "__main__":
     main()
