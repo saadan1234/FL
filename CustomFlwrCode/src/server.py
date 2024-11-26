@@ -164,7 +164,7 @@ class CustomFedAvg(FedAvg):
             for i, (_, fit_res) in enumerate(results) 
         ]
 
-        updates_matrix = np.array([np.concatenate([np.array(p).flatten() for p in update]) for update in decrypted_updates])
+        updates_matrix = np.array([np.concatenate([p.flatten() for p in update]) for update in decrypted_updates])
 
         if updates_matrix.size == 0:
             print("Empty updates matrix, skipping anomaly detection.")

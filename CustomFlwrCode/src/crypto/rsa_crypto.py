@@ -136,7 +136,6 @@ class RsaCryptoAPI:
         # Unpad the decrypted data
         unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
         dec_state_dict = unpadder.update(decrypted_data) + unpadder.finalize()
-        print('encryptedddddddddddddddddddddddddddddddddddddddddddddddd')
         # Return the decrypted data
         return dec_state_dict
     
@@ -150,7 +149,6 @@ class RsaCryptoAPI:
     @staticmethod
     def decrypt_numpy_array(aes_key: bytes, obj: bytes, dtype):
         print(type(obj))
-        print('sssssssssssssssssssssssssssssssssssssssssssssssssss')
         if(type(obj) != bytes):
             obj = obj.tobytes()
         plainarr = RsaCryptoAPI.decrypt_obj(aes_key, obj)
