@@ -1,3 +1,6 @@
+import pickle
+import time
+from typing import Dict, List, Optional, Tuple, Union
 from flwr.server import start_server, ServerConfig
 from flwr.server.strategy import FedAvg
 import numpy as np
@@ -7,10 +10,16 @@ from transformers import AutoTokenizer
 from model import build_model
 from clientutils import load_data, load_dataset_hf, prepare_data, preprocess_and_split, save_data
 from flwr.common import (
-    Parameters,
+    EvaluateRes,
     NDArrays,
-)
-
+    Scalar,
+    Parameters,
+    FitIns,
+    FitRes,
+    EvaluateIns,
+    MetricsAggregationFn)
+from flwr.server.client_proxy import ClientProxy
+from flwr.server.client_manager import ClientManager
 # Global lists to track rounds, loss, and accuracy
 rounds = []
 loss = []
@@ -26,28 +35,11 @@ class CustomFedAvg(FedAvg):
         self.aes_key = aes_key  # AES key for decryption and encryption
         self.model = None  # Placeholder for the model
         self.original_weights = None
+        self.init_stage = True
+        self.ckpt_name = None
 
-    def _decrypt_params(self, parameters: Parameters) -> NDArrays:
-        params = zip(parameters.tensors,
-                    [w.shape for w in self.model.get_weights()],
-                    [w.dtype for w in self.model.get_weights()])
 
-        decrypted_params = []
-        for param, shape, dtype in params:
-            encrypted_size = len(param)
-            expected_size = np.prod(shape) * np.dtype(dtype).itemsize
-            print(f"Encrypted param size: {encrypted_size}, expected size: {expected_size}, shape: {shape}, dtype: {dtype}")
 
-            decrypted_param = RsaCryptoAPI.decrypt_obj(self.aes_key, param)
-            print(f"Decrypted param size: {len(decrypted_param)}, expected shape: {shape}, dtype: {dtype}")
-            
-            decrypted_param = np.frombuffer(buffer=decrypted_param, dtype=dtype)
-            print(f"Decrypted param reshaped size: {decrypted_param.size}")
-            
-            decrypted_param = decrypted_param.reshape(shape)
-            decrypted_params.append(decrypted_param)
-
-        return decrypted_params
     def load_and_prepare_data(self, dataset_name, dataset_type='traditional', input_column=None, output_column=None):
         tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased") if dataset_type == 'text' else None
 
@@ -67,12 +59,156 @@ class CustomFedAvg(FedAvg):
         self.model = build_model(input_shape, num_classes, model_type)
         self.original_weights = self.model.get_weights()
 
-    def aggregate_evaluate(self, rnd: int, results, failures):
+    def initialize_parameters(self, client_manager: ClientManager):
+        #log(INFO, f'Server AES key: {self.__aes_key}')
+        # TODO: Save initial checkpoint
+        return Parameters(
+            tensors=[w for w in self.model.get_weights()],
+            tensor_type="numpy.ndarrays")
+
+    def _get_param_info(self):
+        return zip([],
+                    [v.shape for v in self.model.get_weights()],
+                    [v.dtype for v in self.model.get_weights()])
+    
+    def _decrypt_params(self, parameters: Parameters) -> NDArrays:
+        params = parameters.tensors
+        dec_params = [RsaCryptoAPI.decrypt_numpy_array(self.aes_key, param, dtype=self.original_weights[i].dtype).reshape(self.original_weights[i].shape) for i, param in enumerate(params)]
+        return dec_params
+
+    def _encrypt_params(self, ndarrays: NDArrays) -> Parameters:
+        enc_tensors = [RsaCryptoAPI.encrypt_numpy_array(self.aes_key, arr) for arr in ndarrays]
+        return Parameters(tensors=enc_tensors, tensor_type="")
+
+    def _save_checkpoint(self, params):
+        self.ckpt_name = f"ckpt_sym_{int(time.time())}.bin"
+        with open(self.ckpt_name, 'wb') as f:
+            pickle.dump(params, f)
+
+    def _load_previous_checkpoint(self):
+        with open(self.ckpt_name, 'rb') as f:
+            params = pickle.load(f)
+        return params
+
+    def configure_fit(
+            self, server_round: int, parameters: Parameters, client_manager: ClientManager
+            ) -> List[Tuple[ClientProxy, FitIns]]:
+        """Configure the next round of training."""
+        if self.init_stage:
+            # encrypt all params
+            parameters = self._encrypt_params(parameters.tensors)
+            self._save_checkpoint(parameters)
+            self.init_stage = False
+
+        if len(parameters.tensors) == 0:
+            parameters = self._load_previous_checkpoint()
+
+        fit_config = super().configure_fit(server_round, parameters, client_manager)
+
+        for _, fit_ins in fit_config:
+            fit_ins.config['enc_key'] = self.aes_key
+            fit_ins.config['curr_round'] = server_round
+
+        return fit_config
+    
+    def configure_evaluate(
+            self, server_round: int, parameters: Parameters, client_manager: ClientManager
+            ) -> List[Tuple[ClientProxy, EvaluateIns]]:
+        if self.init_stage:
+            parameters = self._encrypt_params(parameters.tensors)
+            self.init_stage = False
+
+        eval_config = super().configure_evaluate(server_round, parameters, client_manager)
+        for _, ins in eval_config:
+            ins.config['enc_key'] = self.aes_key
+        return eval_config
+    
+    def evaluate(
+        self, server_round: int, parameters: Parameters
+    ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
+        """Evaluate model parameters using an evaluation function."""
+        if self.evaluate_fn is None:
+            # No evaluation function provided
+            return None
+
+        # We deserialize using our custom method
+        if self.init_stage:
+            parameters_ndarrays = parameters.tensors
+        else:
+            parameters_ndarrays = self._decrypt_params(parameters)
+
+        eval_res = self.evaluate_fn(server_round, parameters_ndarrays, {})
+        if eval_res is None:
+            return None
+        loss, metrics = eval_res
+        return loss, metrics
+    
+
+    def aggregate_fit(
+        self,
+        server_round: int,
+        results: List[Tuple[ClientProxy, FitRes]],
+        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+    ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
+        """Aggregate fit results and detect anomalies."""
+        # Collect client updates for anomaly detection
+        client_updates = [res[1] for res in results]
+
+        if not client_updates:
+            print("No client updates available for anomaly detection.")
+            return super().aggregate_fit(server_round, results, failures)
+
+        # Decrypt client updates
+        decrypted_updates = [
+            (self._decrypt_params(fit_res.parameters), fit_res.num_examples)
+            for i, (_, fit_res) in enumerate(results) 
+        ]
+
+        updates_matrix = np.array([np.concatenate([np.array(p).flatten() for p in update]) for update in decrypted_updates])
+
+        if updates_matrix.size == 0:
+            print("Empty updates matrix, skipping anomaly detection.")
+            return super().aggregate_fit(server_round, results, failures)
+
+        # Detect anomalies using Z-score
+        zscore_anomalies = detect_anomalies_zscore(updates_matrix, self.zscore_threshold)
+
+        # Exclude detected anomalies from aggregation
+        filtered_results = [res for i, res in enumerate(results) if i not in zscore_anomalies]
+
+        print(f"Round {server_round}: Detected {len(zscore_anomalies)} anomalous clients, excluded from aggregation.")
+
+        # Apply momentum and aggregate filtered results
+        filtered_updates = np.array([np.concatenate([p.flatten() for p in res.parameters]) for res in filtered_results])
+        aggregated_update = np.mean(filtered_updates, axis=0)
+
+        if self.previous_update is not None:
+            aggregated_update = self.momentum * self.previous_update + (1 - self.momentum) * aggregated_update
+
+        self.previous_update = aggregated_update
+
+        # Reconstruct update parameters
+        aggregated_update_params = [
+            np.reshape(aggregated_update[i:i + len(layer)], layer.shape)
+            for i, layer in enumerate(self.model.get_weights())
+        ]
+
+        # Encrypt the aggregated update parameters
+        enc_aggregated_update_params = self._encrypt_params(aggregated_update_params)
+
+        return enc_aggregated_update_params, {}
+    
+    def aggregate_evaluate(
+        self,
+        server_round: int,
+        results: list[tuple[ClientProxy, EvaluateRes]],
+        failures: list[Union[tuple[ClientProxy, EvaluateRes], BaseException]],
+    ) -> tuple[Optional[float], dict[str, Scalar]]:
         """Aggregate evaluation results and detect anomalies."""
-        aggregated_result = super().aggregate_evaluate(rnd, results, failures)
+        aggregated_result = super().aggregate_evaluate(server_round, results, failures)
 
         # Track round data
-        rounds.append(rnd)
+        rounds.append(server_round)
         if aggregated_result:
             loss_value, metrics = aggregated_result
 
@@ -92,55 +228,11 @@ class CustomFedAvg(FedAvg):
             loss.append(loss_value)
             accuracy.append(smoothed_accuracy)
 
-        print(f"Round {rnd} - Loss: {loss_value}, Smoothed Accuracy: {accuracy[-1]}")
+        print(f"Round {server_round} - Loss: {loss_value}, Smoothed Accuracy: {accuracy[-1]}")
 
         return aggregated_result
 
-    def aggregate_fit(self, rnd: int, results, failures):
-        """Aggregate fit results and detect anomalies."""
-        # Collect client updates for anomaly detection
-        client_updates = [res[1] for res in results]
 
-        if not client_updates:
-            print("No client updates available for anomaly detection.")
-            return super().aggregate_fit(rnd, results, failures)
-
-        # Decrypt client updates
-        decrypted_updates = [self._decrypt_params(update.parameters) for update in client_updates]
-
-        updates_matrix = np.array([np.concatenate([p.flatten() for p in update]) for update in decrypted_updates])
-
-        if updates_matrix.size == 0:
-            print("Empty updates matrix, skipping anomaly detection.")
-            return super().aggregate_fit(rnd, results, failures)
-
-        # Detect anomalies using Z-score
-        zscore_anomalies = detect_anomalies_zscore(updates_matrix, self.zscore_threshold)
-
-        # Exclude detected anomalies from aggregation
-        filtered_results = [res for i, res in enumerate(results) if i not in zscore_anomalies]
-
-        print(f"Round {rnd}: Detected {len(zscore_anomalies)} anomalous clients, excluded from aggregation.")
-
-        # Apply momentum and aggregate filtered results
-        filtered_updates = np.array([np.concatenate([p.flatten() for p in res.parameters]) for res in filtered_results])
-        aggregated_update = np.mean(filtered_updates, axis=0)
-
-        if self.previous_update is not None:
-            aggregated_update = self.momentum * self.previous_update + (1 - self.momentum) * aggregated_update
-
-        self.previous_update = aggregated_update
-
-        # Reconstruct update parameters
-        aggregated_update_params = [
-            np.reshape(aggregated_update[i:i + len(layer)], layer.shape)
-            for i, layer in enumerate(self.model.get_weights())
-        ]
-
-        # Encrypt the aggregated update parameters
-        enc_aggregated_update_params = [RsaCryptoAPI.encrypt_numpy_array(self.aes_key, param) for param in aggregated_update_params]
-
-        return super().aggregate_fit(rnd, filtered_results, failures, parameters=Parameters(tensors=enc_aggregated_update_params, tensor_type=""))
 
 def start_federated_server(num_rounds: int, zscore_threshold: float, momentum: float, server_address: str, aes_key: bytes):
     """Start the federated server with the custom strategy."""

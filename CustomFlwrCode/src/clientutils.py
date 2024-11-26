@@ -5,7 +5,7 @@ from sklearn.preprocessing import MinMaxScaler
 import yaml
 from transformers import DataCollatorWithPadding
 from datasets import load_dataset
-from flwr.client import NumPyClient
+from flwr.client import Client
 from flwr.common import (
     Parameters,
     FitIns,
@@ -22,7 +22,7 @@ import logging
 
 def create_flower_client(model, X_train, Y_train, X_test, Y_test):
     
-    class FlowerClient(NumPyClient):
+    class FlowerClient(Client):
         def __init__(self):
             super().__init__()
             self.aes_key = self.load_key('aes_key.bin')
@@ -34,50 +34,52 @@ def create_flower_client(model, X_train, Y_train, X_test, Y_test):
             with open(filename, 'rb') as f:
                 return f.read()
         
-        def get_parameters(self, config):
-            # Get model weights
+        def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:            # Get model weights
             print("Getting model parameters for encryption.")
 
             # Encrypt model weights
             enc_params = [RsaCryptoAPI.encrypt_numpy_array(self.aes_key, w) for w in self.original_weights]
             print(f"Encrypted parameters: {[len(param) for param in enc_params]}")
 
-            return enc_params
+            return GetParametersRes(
+            status=Status(code=Code.OK, message="Success"),
+            parameters=Parameters(tensors=enc_params, tensor_type="")
+        )
 
-        def fit(self, parameters, config):
-            # Decrypt model weights
-            print("Decrypting model parameters for training.")
-            dec_params = [RsaCryptoAPI.decrypt_numpy_array(self.aes_key, param, dtype=self.original_weights[i].dtype).reshape(self.original_weights[i].shape) for i, param in enumerate(parameters)]
-            print(f"Decrypted parameters: {[param.shape for param in dec_params]}")
+        def set_parameters(self, parameters: Parameters, aes_key: bytes):
+            '''
+            With the model's params received from central server,
+            decrypt them and overwrite the unintialized model in this class
+            '''
+            params = parameters.tensors
+            dec_params = [RsaCryptoAPI.decrypt_numpy_array(self.aes_key, param, dtype=self.original_weights[i].dtype).reshape(self.original_weights[i].shape) for i, param in enumerate(params)]
+            model.set_weights(dec_params)
+            return dec_params
 
-            # Verify that the decrypted weights match the original weights
-            for original, decrypted in zip(self.original_weights, dec_params):
-                assert np.array_equal(original, decrypted), "Decryption failed, arrays do not match."
-            print("Decryption successful, arrays match.")
-
-            keras_weights = flower_weights_to_keras_weights(dec_params)
-            if len(keras_weights) != len(model.get_weights()):
-                raise ValueError(f"Weight mismatch: Expected {len(model.get_weights())}, got {len(keras_weights)}")
-            model.set_weights(keras_weights)
-
-            # Train the model
+        def fit(self, ins: FitIns) -> FitRes:
+            self.set_parameters(ins.parameters, self.aes_key)
             model.fit(X_train, Y_train, epochs=1, batch_size=32, verbose=1)
+            get_param_ins = GetParametersIns(config={
+                'aes_key': self.aes_key
+            })
+            return FitRes(
+            status=Status(code=Code.OK, message="Success"),
+            parameters=self.get_parameters(get_param_ins).parameters,
+            num_examples=len(X_train),
+            metrics={}
+        )
 
-            # Encrypt updated model weights
-            enc_params = [RsaCryptoAPI.encrypt_numpy_array(self.aes_key, w) for w in model.get_weights()]
-            print(f"Encrypted updated parameters: {[len(param) for param in enc_params]}")
-
-            return enc_params, len(X_train), {}
-
-        def evaluate(self, parameters, config):
+        def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
             print("Decrypting model parameters for evaluation.")
-            keras_weights = flower_weights_to_keras_weights(parameters)
-            if len(keras_weights) != len(model.get_weights()):
-                raise ValueError(f"Weight mismatch: Expected {len(model.get_weights())}, got {len(keras_weights)}")
-            model.set_weights(keras_weights)
+            self.set_parameters(ins.parameters, self.aes_key)
             loss, accuracy = model.evaluate(X_test, Y_test)
             print(f"Evaluation results - Loss: {loss}, Accuracy: {accuracy}")
-            return loss, len(X_test), {"accuracy": accuracy}
+            return EvaluateRes(
+            status=Status(code=Code.OK, message="Success"),
+            loss=loss,
+            num_examples=len(X_test),
+            metrics={'accuracy': accuracy}
+        )
 
     return FlowerClient()
 
