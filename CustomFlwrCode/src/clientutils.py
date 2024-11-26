@@ -6,15 +6,69 @@ import yaml
 from transformers import DataCollatorWithPadding
 from datasets import load_dataset
 from flwr.client import NumPyClient
+from flwr.common import (
+    Parameters,
+    FitIns,
+    FitRes,
+    EvaluateIns,
+    EvaluateRes,
+    GetParametersIns,
+    GetParametersRes,
+    Status,
+    Code)
+from crypto.rsa_crypto import RsaCryptoAPI
 
 def create_flower_client(model, X_train, Y_train, X_test, Y_test):
     
     class FlowerClient(NumPyClient):
+        def __init__(self):
+            super().__init__()
+            self.aes_key = self.load_key('aes_key.bin')
+            self.original_weights=  model.get_weights()
+            self.decrypted_weights = None
+        @staticmethod
+        def load_key(filename):
+            with open(filename, 'rb') as f:
+                return f.read()
+        
         def get_parameters(self, config):
-            return model.get_weights()
+            # Get model weights
 
+
+            # Encrypt model weights
+            enc_params = [RsaCryptoAPI.encrypt_numpy_array(self.aes_key, w) for w in self.original_weights]
+            # print("Encrypted Weights:")
+            # print(enc_params)
+
+            # dec_params = [RsaCryptoAPI.decrypt_numpy_array(self.aes_key, param, dtype=self.original_weights[i].dtype).reshape(self.original_weights[i].shape) for i, param in enumerate(enc_params)]
+            # self.decrypted_weights = dec_params
+
+            # # # Verify that the decrypted weights match the original weights
+            # for original, decrypted in zip(self.original_weights, dec_params):
+            #     assert np.array_equal(original, decrypted), "Decryption failed, arrays do not match."
+            # print(type(enc_params[0]))
+            # print(len(self.original_weights[0].dtype))
+            # print(len(self.original_weights))
+            # print(len(self.original_weights[0].shape))
+
+            # print("Decryption successful, arrays matcaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaah.")
+            return enc_params
         def fit(self, parameters, config):
-            keras_weights = flower_weights_to_keras_weights(parameters)
+            # Decrypt model weights
+            print(type(parameters))
+            print(type(parameters[0]))
+            print(len(self.original_weights[0].dtype))
+            print(len(self.original_weights))   
+            print(len(self.original_weights[0].shape))
+        
+            print("Decryption successful, arrays matcaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaah.")
+
+            dec_params = [RsaCryptoAPI.decrypt_numpy_array(self.aes_key, param, dtype=self.original_weights[i].dtype).reshape(self.original_weights[i].shape) for i, param in enumerate(parameters)]
+            # verify that the decrypted weights match the original weights
+            # for original, decrypted in zip(self.original_weights, dec_params):
+            #     assert np.array_equal(original, decrypted), "Decryption failed, arrays do not match."
+            print("Decryption successful, arrays match.")
+            keras_weights = flower_weights_to_keras_weights(dec_params)
             if len(keras_weights) != len(model.get_weights()):
                 raise ValueError(f"Weight mismatch: Expected {len(model.get_weights())}, got {len(keras_weights)}")
             print(f"Keras Weights{type(keras_weights)}")
@@ -22,7 +76,8 @@ def create_flower_client(model, X_train, Y_train, X_test, Y_test):
 
             # Train the model
             model.fit(X_train, Y_train, epochs=1, batch_size=32, verbose=1)
-            return model.get_weights(), len(X_train), {}
+            enc_params = [RsaCryptoAPI.encrypt_numpy_array(self.aes_key, w) for w in model.get_weights()]
+            return enc_params, len(X_train), {}
 
         def evaluate(self, parameters, config):
             keras_weights = flower_weights_to_keras_weights(parameters)

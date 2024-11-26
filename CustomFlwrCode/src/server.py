@@ -2,20 +2,30 @@ from flwr.server import start_server, ServerConfig
 from flwr.server.strategy import FedAvg
 import numpy as np
 from serverutils import detect_anomalies_zscore, load_config, plot_training_metrics, weighted_average
-
+from crypto.rsa_crypto import RsaCryptoAPI
+from flwr.common import (
+    Parameters,
+    FitIns,
+    FitRes,
+    EvaluateIns,
+    EvaluateRes,
+    GetParametersIns,
+    GetParametersRes,
+    Status,
+    Code)
 # Global lists to track rounds, loss, and accuracy
 rounds = []
 loss = []
 accuracy = []
 
-
 class CustomFedAvg(FedAvg):
-    def __init__(self, zscore_threshold: float = 2.5, momentum: float = 0.9, **kwargs):
+    def __init__(self, zscore_threshold: float = 2.5, momentum: float = 0.9, aes_key: bytes = None, **kwargs):
         super().__init__(**kwargs)
         self.zscore_threshold = zscore_threshold
         self.momentum = momentum
         self.previous_update = None  # To store previous update for momentum application
         self.previous_accuracy = None  # For smoothing global accuracy
+        self.aes_key = aes_key  # AES key for decryption and encryption
 
     def aggregate_evaluate(self, rnd: int, results, failures):
         """Aggregate evaluation results and detect anomalies."""
@@ -44,17 +54,28 @@ class CustomFedAvg(FedAvg):
 
         print(f"Round {rnd} - Loss: {loss_value}, Smoothed Accuracy: {accuracy[-1]}")
 
+        return aggregated_result
+
+    def aggregate_fit(self, rnd: int, results, failures):
+        """Aggregate fit results and detect anomalies."""
         # Collect client updates for anomaly detection
         client_updates = [res.parameters for res in results if hasattr(res, "parameters")]
+
         if not client_updates:
             print("No client updates available for anomaly detection.")
-            return aggregated_result
+            return super().aggregate_fit(rnd, results, failures)
 
-        updates_matrix = np.array([np.concatenate([p.flatten() for p in update]) for update in client_updates])
+        # Decrypt client updates
+        decrypted_updates = []
+        for update in client_updates:
+            decrypted_update = [np.frombuffer(RsaCryptoAPI.decrypt_obj(self.aes_key, param), dtype=np.float32).reshape(param.shape) for param in update.tensors]
+            decrypted_updates.append(decrypted_update)
+
+        updates_matrix = np.array([np.concatenate([p.flatten() for p in update]) for update in decrypted_updates])
 
         if updates_matrix.size == 0:
             print("Empty updates matrix, skipping anomaly detection.")
-            return aggregated_result
+            return super().aggregate_fit(rnd, results, failures)
 
         # Detect anomalies using Z-score
         zscore_anomalies = detect_anomalies_zscore(updates_matrix, self.zscore_threshold)
@@ -79,9 +100,12 @@ class CustomFedAvg(FedAvg):
             for i, layer in enumerate(self.model.get_weights())
         ]
 
-        return super().aggregate_fit(rnd, filtered_results, failures, parameters=aggregated_update_params)
+        # Encrypt the aggregated update parameters
+        enc_aggregated_update_params = [RsaCryptoAPI.encrypt_numpy_array(self.aes_key, param) for param in aggregated_update_params]
 
-def start_federated_server(num_rounds: int, zscore_threshold: float, momentum: float, server_address: str):
+        return super().aggregate_fit(rnd, filtered_results, failures, parameters=Parameters(tensors=enc_aggregated_update_params, tensor_type=""))
+
+def start_federated_server(num_rounds: int, zscore_threshold: float, momentum: float, server_address: str, aes_key: bytes):
     """Start the federated server with the custom strategy."""
     start_server(
         server_address=server_address,
@@ -89,17 +113,17 @@ def start_federated_server(num_rounds: int, zscore_threshold: float, momentum: f
         strategy=CustomFedAvg(
             evaluate_metrics_aggregation_fn=weighted_average,
             zscore_threshold=zscore_threshold,
-            momentum=momentum
+            momentum=momentum,
+            aes_key=aes_key
         ),
     )
-
-
 
 def main():
     """Main function to set up and run the federated learning server."""
     # Start the federated server with the custom strategy
     config = load_config("config.yaml")
     server_config = config["server"]
+    aes_key = RsaCryptoAPI.load_key('aes_key.bin')  # Load the AES key
 
     # Start the server with YAML config
     start_federated_server(
@@ -107,6 +131,7 @@ def main():
         zscore_threshold=server_config["zscore_threshold"],
         momentum=server_config["momentum"],
         server_address=server_config["server_address"],
+        aes_key=aes_key
     )
 
     # Plot the metrics after training rounds are completed

@@ -4,6 +4,7 @@ from model import build_model
 from clientutils import create_flower_client, load_config, load_data, load_dataset_hf, prepare_data, preprocess_and_split, save_data
 from utils import split_data
 from flwr.client import start_client
+from crypto.rsa_crypto import RsaCryptoAPI
 
 def main(dataset_name, dataset_type='traditional', model_type='dense', input_column=None, output_column=None):
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased") if dataset_type == 'text' else None
