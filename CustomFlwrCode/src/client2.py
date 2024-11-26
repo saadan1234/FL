@@ -32,9 +32,9 @@ def main(dataset_name, dataset_type='traditional', model_type='dense', input_col
 
     num_classes = len(np.unique(Y_train))
 
-    def start_flower_client(client_id, client_model, X_client_train, Y_client_train, X_client_test, Y_client_test):
+    def start_flower_client(client_id, input_shape, num_classes, model_type, X_client_train, Y_client_train, X_client_test, Y_client_test):
         """Function to start a Flower client."""
-        client = create_flower_client(client_model, X_client_train, Y_client_train, X_client_test, Y_client_test)
+        client = create_flower_client(input_shape, num_classes, model_type, X_client_train, Y_client_train, X_client_test, Y_client_test)
         print(f"Starting Client {client_id}")
         start_client(server_address=f"127.0.0.{client_id}:8080", client=client)
 
@@ -47,7 +47,7 @@ def main(dataset_name, dataset_type='traditional', model_type='dense', input_col
     client_test_split = split_data(X_test, Y_test, num_clients, iid=True)
     X_client_test, Y_client_test = client_test_split[client_id]
 
-    start_flower_client(client_id, client_model, X_client_train, Y_client_train, X_client_test, Y_client_test)
+    start_flower_client(client_id, input_shape, num_classes, model_type, X_client_train, Y_client_train, X_client_test, Y_client_test)
 
 
 if __name__ == "__main__":

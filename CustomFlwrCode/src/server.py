@@ -20,6 +20,8 @@ from flwr.common import (
     MetricsAggregationFn)
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.client_manager import ClientManager
+from flwr.server.strategy.aggregate import aggregate
+
 # Global lists to track rounds, loss, and accuracy
 rounds = []
 loss = []
@@ -37,8 +39,7 @@ class CustomFedAvg(FedAvg):
         self.original_weights = None
         self.init_stage = True
         self.ckpt_name = None
-
-
+    
 
     def load_and_prepare_data(self, dataset_name, dataset_type='traditional', input_column=None, output_column=None):
         tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased") if dataset_type == 'text' else None
@@ -152,11 +153,11 @@ class CustomFedAvg(FedAvg):
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         """Aggregate fit results and detect anomalies."""
         # Collect client updates for anomaly detection
-        client_updates = [res[1] for res in results]
+        # client_updates = [res[1] for res in results]
 
-        if not client_updates:
-            print("No client updates available for anomaly detection.")
-            return super().aggregate_fit(server_round, results, failures)
+        # if not client_updates:
+        #     print("No client updates available for anomaly detection.")
+        #     return super().aggregate_fit(server_round, results, failures)
 
         # Decrypt client updates
         decrypted_updates = [
@@ -164,37 +165,37 @@ class CustomFedAvg(FedAvg):
             for i, (_, fit_res) in enumerate(results) 
         ]
 
-        updates_matrix = np.array([np.concatenate([p.flatten() for p in update]) for update in decrypted_updates])
+        # updates_matrix = np.array([np.concatenate([p.flatten() for p in update]) for update in decrypted_updates])
 
-        if updates_matrix.size == 0:
-            print("Empty updates matrix, skipping anomaly detection.")
-            return super().aggregate_fit(server_round, results, failures)
+        # if updates_matrix.size == 0:
+        #     print("Empty updates matrix, skipping anomaly detection.")
+        #     return super().aggregate_fit(server_round, results, failures)
 
-        # Detect anomalies using Z-score
-        zscore_anomalies = detect_anomalies_zscore(updates_matrix, self.zscore_threshold)
+        # # Detect anomalies using Z-score
+        # zscore_anomalies = detect_anomalies_zscore(updates_matrix, self.zscore_threshold)
 
-        # Exclude detected anomalies from aggregation
-        filtered_results = [res for i, res in enumerate(results) if i not in zscore_anomalies]
+        # # Exclude detected anomalies from aggregation
+        # filtered_results = [res for i, res in enumerate(results) if i not in zscore_anomalies]
 
-        print(f"Round {server_round}: Detected {len(zscore_anomalies)} anomalous clients, excluded from aggregation.")
+        # print(f"Round {server_round}: Detected {len(zscore_anomalies)} anomalous clients, excluded from aggregation.")
 
-        # Apply momentum and aggregate filtered results
-        filtered_updates = np.array([np.concatenate([p.flatten() for p in res.parameters]) for res in filtered_results])
-        aggregated_update = np.mean(filtered_updates, axis=0)
+        # # Apply momentum and aggregate filtered results
+        # filtered_updates = np.array([np.concatenate([p.flatten() for p in res.parameters]) for res in filtered_results])
+        # aggregated_update = np.mean(filtered_updates, axis=0)
 
-        if self.previous_update is not None:
-            aggregated_update = self.momentum * self.previous_update + (1 - self.momentum) * aggregated_update
+        # if self.previous_update is not None:
+        #     aggregated_update = self.momentum * self.previous_update + (1 - self.momentum) * aggregated_update
 
-        self.previous_update = aggregated_update
+        # self.previous_update = aggregated_update
 
-        # Reconstruct update parameters
-        aggregated_update_params = [
-            np.reshape(aggregated_update[i:i + len(layer)], layer.shape)
-            for i, layer in enumerate(self.model.get_weights())
-        ]
+        # # Reconstruct update parameters
+        # aggregated_update_params = [
+        #     np.reshape(aggregated_update[i:i + len(layer)], layer.shape)
+        #     for i, layer in enumerate(self.model.get_weights())
+        # ]
 
         # Encrypt the aggregated update parameters
-        enc_aggregated_update_params = self._encrypt_params(aggregated_update_params)
+        enc_aggregated_update_params = self._encrypt_params(aggregate(decrypted_updates))
 
         return enc_aggregated_update_params, {}
     
@@ -223,6 +224,7 @@ class CustomFedAvg(FedAvg):
                 smoothed_accuracy = current_accuracy
 
             self.previous_accuracy = smoothed_accuracy
+            print(current_accuracy,'this is current acuracy')
 
             # Store smoothed metrics
             loss.append(loss_value)

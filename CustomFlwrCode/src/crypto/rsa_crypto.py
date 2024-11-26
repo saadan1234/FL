@@ -148,7 +148,6 @@ class RsaCryptoAPI:
     
     @staticmethod
     def decrypt_numpy_array(aes_key: bytes, obj: bytes, dtype):
-        print(type(obj))
         if(type(obj) != bytes):
             obj = obj.tobytes()
         plainarr = RsaCryptoAPI.decrypt_obj(aes_key, obj)

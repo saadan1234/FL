@@ -1,5 +1,7 @@
 import pickle
 import numpy as np
+from model import build_model
+
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 import yaml
@@ -20,14 +22,14 @@ from crypto.rsa_crypto import RsaCryptoAPI
 import logging
 
 
-def create_flower_client(model, X_train, Y_train, X_test, Y_test):
+def create_flower_client(input_shape, num_classes, model_type, X_train, Y_train, X_test, Y_test):
     
     class FlowerClient(Client):
         def __init__(self):
             super().__init__()
             self.aes_key = self.load_key('aes_key.bin')
-            self.original_weights = model.get_weights()
             self.decrypted_weights = None
+            self.model = build_model(input_shape, num_classes, model_type)
 
         @staticmethod
         def load_key(filename):
@@ -38,7 +40,7 @@ def create_flower_client(model, X_train, Y_train, X_test, Y_test):
             print("Getting model parameters for encryption.")
 
             # Encrypt model weights
-            enc_params = [RsaCryptoAPI.encrypt_numpy_array(self.aes_key, w) for w in self.original_weights]
+            enc_params = [RsaCryptoAPI.encrypt_numpy_array(self.aes_key, w) for w in self.model.get_weights()]
             print(f"Encrypted parameters: {[len(param) for param in enc_params]}")
 
             return GetParametersRes(
@@ -52,13 +54,13 @@ def create_flower_client(model, X_train, Y_train, X_test, Y_test):
             decrypt them and overwrite the unintialized model in this class
             '''
             params = parameters.tensors
-            dec_params = [RsaCryptoAPI.decrypt_numpy_array(self.aes_key, param, dtype=self.original_weights[i].dtype).reshape(self.original_weights[i].shape) for i, param in enumerate(params)]
-            model.set_weights(dec_params)
+            dec_params = [RsaCryptoAPI.decrypt_numpy_array(self.aes_key, param, dtype=self.model.get_weights()[i].dtype).reshape(self.model.get_weights()[i].shape) for i, param in enumerate(params)]
+            self.model.set_weights(dec_params)
             return dec_params
 
         def fit(self, ins: FitIns) -> FitRes:
             self.set_parameters(ins.parameters, self.aes_key)
-            model.fit(X_train, Y_train, epochs=1, batch_size=32, verbose=1)
+            self.model.fit(X_train, Y_train, epochs=1, batch_size=32, verbose=1)
             get_param_ins = GetParametersIns(config={
                 'aes_key': self.aes_key
             })
@@ -72,7 +74,7 @@ def create_flower_client(model, X_train, Y_train, X_test, Y_test):
         def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
             print("Decrypting model parameters for evaluation.")
             self.set_parameters(ins.parameters, self.aes_key)
-            loss, accuracy = model.evaluate(X_test, Y_test)
+            loss, accuracy = self.model.evaluate(X_test, Y_test)
             print(f"Evaluation results - Loss: {loss}, Accuracy: {accuracy}")
             return EvaluateRes(
             status=Status(code=Code.OK, message="Success"),
