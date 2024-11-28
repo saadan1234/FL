@@ -255,7 +255,7 @@ def main():
     config = load_config("config.yaml")
     server_config = config["server"]
     c_config = config["client1"]
-    aes_key = RsaCryptoAPI.load_key('aes_key.bin')  # Load the AES key
+    aes_key = RsaCryptoAPI.load_key('crypto/aes_key.bin')  # Load the AES key
 
     custom_fed_avg = CustomFedAvg(
         evaluate_metrics_aggregation_fn=weighted_average,

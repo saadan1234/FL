@@ -19,7 +19,6 @@ from flwr.common import (
     Status,
     Code)
 from crypto.rsa_crypto import RsaCryptoAPI
-import logging
 
 
 def create_flower_client(input_shape, num_classes, model_type, X_train, Y_train, X_test, Y_test):
@@ -27,7 +26,7 @@ def create_flower_client(input_shape, num_classes, model_type, X_train, Y_train,
     class FlowerClient(Client):
         def __init__(self):
             super().__init__()
-            self.aes_key = self.load_key('aes_key.bin')
+            self.aes_key = self.load_key('crypto/aes_key.bin')
             self.decrypted_weights = None
             self.model = build_model(input_shape, num_classes, model_type)
 

@@ -2,7 +2,7 @@ import numpy as np
 from transformers import AutoTokenizer
 from model import build_model
 from clientutils import create_flower_client, load_config, load_data, load_dataset_hf, prepare_data, preprocess_and_split, save_data
-from utils import split_data
+from serverutils import split_data
 from flwr.client import start_client
 from crypto.rsa_crypto import RsaCryptoAPI
 
