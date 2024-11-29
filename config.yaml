@@ -1,17 +1,17 @@
 server:
-  num_rounds: 2
+  num_rounds: 5
   zscore_threshold: 2.5
   momentum: 0.9
   server_address: "0.0.0.0:8080"
 client1:
         dataset_name: 'fathyshalab/massive_iot'
         dataset_type: 'text'
-        model_type: 'lstm'
+        model_type: 'text'
         input_column: 'text'
         output_column: 'label'
 client2:
         dataset_name: 'fathyshalab/massive_iot'
         dataset_type: 'text'
-        model_type: 'lstm'
+        model_type: 'text'
         input_column: 'text'
         output_column: 'label'
