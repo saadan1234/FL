@@ -124,25 +124,25 @@ class CustomFedAvg(FedAvg):
             ins.config['enc_key'] = self.aes_key
         return eval_config
     
-    def evaluate(
-        self, server_round: int, parameters: Parameters
-    ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
-        """Evaluate model parameters using an evaluation function."""
-        if self.evaluate_fn is None:
-            # No evaluation function provided
-            return None
+    # def evaluate(
+    #     self, server_round: int, parameters: Parameters
+    # ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
+    #     """Evaluate model parameters using an evaluation function."""
+    #     if self.evaluate_fn is None:
+    #         # No evaluation function provided
+    #         return None
 
-        # We deserialize using our custom method
-        if self.init_stage:
-            parameters_ndarrays = parameters.tensors
-        else:
-            parameters_ndarrays = self._decrypt_params(parameters)
+    #     # We deserialize using our custom method
+    #     if self.init_stage:
+    #         parameters_ndarrays = parameters.tensors
+    #     else:
+    #         parameters_ndarrays = self._decrypt_params(parameters)
 
-        eval_res = self.evaluate_fn(server_round, parameters_ndarrays, {})
-        if eval_res is None:
-            return None
-        loss, metrics = eval_res
-        return loss, metrics
+    #     eval_res = self.evaluate_fn(server_round, parameters_ndarrays, {})
+    #     if eval_res is None:
+    #         return None
+    #     loss, metrics = eval_res
+    #     return loss, metrics
     
 
     def aggregate_fit(
