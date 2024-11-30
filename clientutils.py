@@ -267,7 +267,7 @@ def prepare_data(dataset, tokenizer=None, input_col=None, output_col=None, datas
             tokenized["input_ids"] = np.clip(tokenized["input_ids"], 0, vocab_size - 1)  # Ensure valid vocab range
             return tokenized
         dataset = dataset.map(tokenize_function, batched=True)
-    elif dataset_type == 'traditional':
+    elif dataset_type == 'image' or dataset_type == 'dense':
         def process_features(example):
             example['features'] = np.array(example[input_col]).flatten()
             example['labels'] = example[output_col]

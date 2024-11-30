@@ -53,30 +53,23 @@ def create_gradient_leakage_client(input_shape, num_classes, model_type, X_train
             self.model.fit(X_train, Y_train, epochs=1, batch_size=32, verbose=1)
             print("Performing Gradient Leakage Attack...")
 
-            optimizer = tf.keras.optimizers.SGD(learning_rate=0.01)
-            loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
-
             inputs = tf.convert_to_tensor(X_train[:1], dtype=tf.float32)
             targets = tf.convert_to_tensor(Y_train[:1], dtype=tf.int32)
 
-            # Use persistent GradientTape to compute gradients multiple times
-            with tf.GradientTape(persistent=True) as tape:
-                tape.watch(inputs)
+            # Compute initial loss and gradients
+            with tf.GradientTape() as tape:
                 outputs = self.model(inputs)
-                loss = loss_fn(targets, outputs)
+                loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)(targets, outputs)
+                gradients = tape.gradient(loss, self.model.trainable_weights)
 
-            # Compute gradients
-            gradients = tape.gradient(loss, self.model.trainable_weights)
-
-            # Call gradient leakage attack with persistent tape
+            # Call gradient leakage attack
             reconstructed_data, similarity_score = gradient_leakage_attack_keras(
                 self.model, gradients, inputs.shape, inputs.numpy()
             )
 
-            # Explicitly delete the tape to free memory
-            del tape
-
-            print(f"Similarity Score (MSE): {similarity_score}")
+            # Print the recovered or generated data
+            print("Recovered Data (first 5 elements):", reconstructed_data.flatten()[:5])
+            print("Similarity Score (MSE):", similarity_score)
 
             # Prepare parameters for the server
             get_param_ins = GetParametersIns(config={"aes_key": self.aes_key})
@@ -86,7 +79,6 @@ def create_gradient_leakage_client(input_shape, num_classes, model_type, X_train
                 num_examples=len(X_train),
                 metrics={"similarity_score": float(similarity_score)},
             )
-
 
         def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
             print("Decrypting model parameters for evaluation.")
@@ -108,28 +100,43 @@ def gradient_leakage_attack_keras(model, gradients, target_shape, actual_data):
     optimizer = tf.keras.optimizers.SGD(learning_rate=0.1)
     loss_fn = tf.keras.losses.MeanSquaredError()
 
-    for step in range(10):
-        with tf.GradientTape() as tape:
-            tape.watch(reconstructed_data)
-            outputs = model(reconstructed_data)
-            # Match gradients with model trainable weights
-            loss = tf.add_n([
-                loss_fn(tf.convert_to_tensor(g), tf.convert_to_tensor(r)) for g, r in zip(
+    def compute_gradient_loss(tape):
+        outputs = model(reconstructed_data)
+        # Match gradients with model trainable weights
+        loss = tf.add_n([
+            loss_fn(tf.convert_to_tensor(g), tf.convert_to_tensor(r)) for g, r in zip(
                 gradients,
                 tape.gradient(outputs, model.trainable_weights)
             ) if g is not None and r is not None
-            ])
+        ])
+        return loss
 
-        # Compute gradients for reconstruction
-        grads = tape.gradient(loss, [reconstructed_data])
-        if grads[0] is None:
-            raise ValueError("Gradients for reconstructed_data are None. Check graph connections.")
+    for step in range(10):
+        # Use persistent tape to allow multiple gradient computations
+        with tf.GradientTape(persistent=True) as tape:
+            tape.watch(reconstructed_data)
+            loss = compute_gradient_loss(tape)
 
-        # Apply gradient updates
-        optimizer.apply_gradients(zip(grads, [reconstructed_data]))
+        try:
+            # Compute gradients for reconstruction
+            grads = tape.gradient(loss, [reconstructed_data])
+            
+            if grads[0] is None:
+                print("Warning: Gradients for reconstructed_data are None.")
+                break
 
-        if step % 2 == 0:
-            print(f"Step {step}, Loss: {loss.numpy()}")
+            # Apply gradient updates
+            optimizer.apply_gradients(zip(grads, [reconstructed_data]))
+
+            if step % 2 == 0:
+                print(f"Step {step}, Loss: {loss.numpy()}")
+
+        except Exception as e:
+            print(f"Error in gradient computation: {e}")
+            break
+        finally:
+            # Explicitly delete the tape to free memory
+            del tape
 
     reconstructed_data_np = reconstructed_data.numpy()
     similarity_score = tf.reduce_mean(tf.square(actual_data - reconstructed_data_np)).numpy()
