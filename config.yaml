@@ -1,17 +1,17 @@
 server:
-  num_rounds: 5
+  num_rounds: 10
   zscore_threshold: 2.5
   momentum: 0.9
   server_address: "0.0.0.0:8080"
 client1:
-        dataset_name: 'fathyshalab/massive_iot'
-        dataset_type: 'text'
-        model_type: 'text'
-        input_column: 'text'
+        dataset_name: 'wasifis/cifar-10-100'
+        dataset_type: 'traditional'
+        model_type: 'image'
+        input_column: 'img'
         output_column: 'label'
 client2:
-        dataset_name: 'fathyshalab/massive_iot'
-        dataset_type: 'text'
-        model_type: 'text'
-        input_column: 'text'
+        dataset_name: 'wasifis/cifar-10-100'
+        dataset_type: 'traditional'
+        model_type: 'image'
+        input_column: 'img'
         output_column: 'label'

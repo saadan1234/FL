@@ -23,6 +23,13 @@ from crypto.rsa_crypto import RsaCryptoAPI
 import tensorflow as tf
 import numpy as np
 
+import tensorflow as tf
+from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, MaxPooling2D, Flatten, Dropout, Dense
+from tensorflow.keras.models import Model
+
+import tensorflow as tf
+from tensorflow.keras import layers, models
+
 def build_model(input_shape, num_classes, model_type='dense', vocab_size=20000):
     """
     Build and compile a Keras model.
@@ -37,18 +44,19 @@ def build_model(input_shape, num_classes, model_type='dense', vocab_size=20000):
         A compiled Keras model.
     """
     if model_type == 'image':
-        base_model = tf.keras.applications.MobileNetV2(
-            input_shape=(input_shape[0], input_shape[1], 3),  # Assuming RGB images
-            include_top=False,
-            weights='imagenet'
-        )
-        base_model.trainable = False  # Freeze the base model to use it as a feature extractor
-        model = tf.keras.Sequential([
-            base_model,
-            tf.keras.layers.GlobalAveragePooling2D(),
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(num_classes, activation='softmax')
-        ])
+        print("input_shape", input_shape)
+        
+        # Create the model using the Sequential API
+        model = models.Sequential()
+        model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)))
+        model.add(layers.MaxPooling2D((2, 2)))
+        model.add(layers.Conv2D(64, (3, 3), activation='relu'))
+        model.add(layers.MaxPooling2D((2, 2)))
+        model.add(layers.Conv2D(64, (3, 3), activation='relu'))
+        model.add(layers.Flatten())
+        model.add(layers.Dense(64, activation='relu'))
+        model.add(layers.Dense(num_classes, activation='softmax'))
+        
         loss = 'sparse_categorical_crossentropy' if num_classes > 1 else 'binary_crossentropy'
     
     elif model_type == 'dense':
@@ -176,7 +184,7 @@ def create_flower_client(input_shape, num_classes, model_type, X_train, Y_train,
                 Fit results including updated parameters.
             """
             self.set_parameters(ins.parameters, self.aes_key)
-            self.model.fit(X_train, Y_train, epochs=1, batch_size=32, verbose=1)
+            self.model.fit(X_train, Y_train,validation_data=(X_test, Y_test), epochs=10, batch_size=32, verbose=1)
             get_param_ins = GetParametersIns(config={'aes_key': self.aes_key})
             return FitRes(
                 status=Status(code=Code.OK, message="Success"),
@@ -283,7 +291,6 @@ def preprocess_and_split(dataset, tokenizer=None, dataset_type='traditional', no
         dataset: Dataset to preprocess.
         tokenizer: Tokenizer for text datasets.
         dataset_type: Type of dataset ('text' or 'traditional').
-        normalize: Whether to normalize traditional dataset inputs.
         input_col: Column for input data.
         output_col: Column for output labels.
 
@@ -297,13 +304,14 @@ def preprocess_and_split(dataset, tokenizer=None, dataset_type='traditional', no
         x = batch["input_ids"]
         y = np.array(batch["labels"])
     else:
+        print("input_col", input_col)
+        print("output_col", output_col)
         x = np.array([example[input_col] for example in dataset])
         y = np.array([example[output_col] for example in dataset])
-        if x.ndim > 2:
-            x = x.reshape(x.shape[0], -1)
         if normalize:
             scaler = MinMaxScaler()
-            x = scaler.fit_transform(x)
+            x_shape = x.shape
+            x = scaler.fit_transform(x.reshape(-1, x_shape[-1])).reshape(x_shape)
     return train_test_split(x, y, test_size=0.2, random_state=42)
 
 def save_data(filename, X_train, Y_train, X_test, Y_test):

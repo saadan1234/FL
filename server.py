@@ -71,7 +71,9 @@ class CustomFedAvg(FedAvg):
 
         dataset = load_dataset_hf(dataset_name, input_column, output_column, dataset_type)
         dataset = prepare_data(dataset, tokenizer, input_column, output_column, dataset_type)
-        return preprocess_and_split(dataset["train"], tokenizer, dataset_type, input_column, output_column)
+        print('input_column:', input_column)
+        print('output_column:', output_column)
+        return preprocess_and_split(dataset["train"], tokenizer, dataset_type,True, input_column, output_column)
 
     def build_and_save_model(self, input_shape, num_classes, model_type="dense"):
         """
@@ -264,6 +266,9 @@ def main():
 
     # Build the model
     input_shape = X_train.shape[1]
+    if(client_config["dataset_type"]=='traditional'):
+        input_shape = X_train.shape
+        print('input_shape:', input_shape)
     num_classes = len(np.unique(Y_train))
     custom_strategy.build_and_save_model(input_shape, num_classes, client_config["model_type"])
 

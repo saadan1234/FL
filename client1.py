@@ -56,16 +56,12 @@ def prepare_client_data(dataset_name, dataset_type, input_column, output_column,
     client_data = split_data(X_train, Y_train, num_clients, iid=True)
     test_data = split_data(X_test, Y_test, num_clients, iid=True)
 
-    # Reshape for LSTM if required
-    if model_type == "lstm":
-        input_shape = X_train.shape[1]
-        for client_id in client_data.keys():
-            client_data[client_id] = (
-                client_data[client_id][0].reshape(-1, input_shape, 1),
-                client_data[client_id][1],
-            )
+   
+    input_shape = X_train.shape[1]
+    if(dataset_type=='traditional'):
+        input_shape = X_train.shape
 
-    return client_data, test_data, X_train.shape[1], len(np.unique(Y_train))
+    return client_data, test_data, input_shape, len(np.unique(Y_train))
 
 def start_flower_client(client_id, input_shape, num_classes, model_type, client_data, test_data):
     """
