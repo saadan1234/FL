@@ -108,7 +108,7 @@ def create_flower_client(input_shape, num_classes, model_type, X_train, Y_train,
                 Fit results including updated parameters.
             """
             self.set_parameters(ins.parameters, self.aes_key)
-            self.model.fit(X_train, Y_train, validation_data=(X_test, Y_test), epochs=10, batch_size=32, verbose=1)
+            self.model.fit(X_train, Y_train, validation_data=(X_test, Y_test), epochs=1, batch_size=32, verbose=1)
             get_param_ins = GetParametersIns(config={'aes_key': self.aes_key})
             return FitRes(
                 status=Status(code=Code.OK, message="Success"),

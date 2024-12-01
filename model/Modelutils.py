@@ -16,6 +16,7 @@ def build_model(input_shape, num_classes, model_type='dense', vocab_size=20000):
     """
     if model_type == 'image':
         print("input_shape", input_shape)
+        input_shape = tuple(input_shape)
         
         # Create the model using the Sequential API
         model = models.Sequential()

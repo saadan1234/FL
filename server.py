@@ -271,7 +271,7 @@ def main():
         aes_key=aes_key,
     )
 
-    input_shape = tuple(server_config['input_shape'])
+    input_shape = server_config['input_shape']
     num_classes = server_config['num_classes']
     model_type = server_config['model_type']
     custom_strategy.build_and_load_model(input_shape, num_classes, model_type)
