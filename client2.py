@@ -1,15 +1,12 @@
 import numpy as np
 from transformers import AutoTokenizer
-from attacktutils import  create_gradient_leakage_client  # Custom client to simulate gradient leakage attacks
-from clientutils import (
-    create_flower_client,
-    load_config,  # Loads configuration from a YAML file
-    load_dataset_hf,  # Load dataset from Hugging Face or local sources
-    prepare_data,  # Preprocess the dataset according to the task requirements
-    preprocess_and_split,  # Further split and preprocess data into train/test sets
+from attack_sim.attacktutils import  create_gradient_leakage_client  # Custom client to simulate gradient leakage attacks
+from client.clientutils import (
+    create_flower_client # Further split and preprocess data into train/test sets
 )
-from serverutils import split_data  # Splits data among clients in IID or non-IID fashion
+from server.serverutils import split_data  # Splits data among clients in IID or non-IID fashion
 from flwr.client import start_client  # Starts a Flower client to participate in FL
+from data.data_utils import load_dataset_hf, prepare_data, preprocess_and_split, load_config
 
 def prepare_client_data(dataset_name, dataset_type, input_column, output_column, model_type, num_clients):
     """

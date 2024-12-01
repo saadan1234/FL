@@ -1,14 +1,11 @@
 import numpy as np
 from transformers import AutoTokenizer
-from clientutils import (
+from client.clientutils import (
     create_flower_client,
-    load_config,
-    load_dataset_hf,
-    prepare_data,
-    preprocess_and_split,
 )
-from serverutils import split_data
+from server.serverutils import split_data
 from flwr.client import start_client
+from data.data_utils import load_dataset_hf, prepare_data, preprocess_and_split, load_config
 
 def prepare_client_data(dataset_name, dataset_type, input_column, output_column, model_type, num_clients):
     """

@@ -1,4 +1,6 @@
 # Import necessary libraries
+import pickle
+import time
 import numpy as np
 from flwr.server import start_server, ServerConfig
 from flwr.server.strategy import FedAvg
@@ -8,10 +10,9 @@ from flwr.common import (
 )
 from flwr.server.client_manager import ClientManager
 from flwr.server.strategy.aggregate import aggregate
-from serverutils import load_config, plot_training_metrics, weighted_average
+from server.serverutils import load_config, plot_training_metrics, weighted_average
 from crypto.rsa_crypto import RsaCryptoAPI
-from clientutils import load_dataset_hf, preprocess_and_split, prepare_data
-from Modelutils import build_model
+from model.Modelutils import build_model
 
 # Metrics storage
 metrics = {"rounds": [], "loss": [], "accuracy": []}
@@ -75,7 +76,7 @@ class CustomFedAvg(FedAvg):
         print('output_column:', output_column)
         return preprocess_and_split(dataset["train"], tokenizer, dataset_type,True, input_column, output_column)
 
-    def buid_and_load_model(self, input_shape, num_classes, model_type="dense"):
+    def build_and_load_model(self, input_shape, num_classes, model_type="dense"):
         """
         Builds a model based on the dataset's requirements and initializes original weights.
         """
@@ -85,7 +86,18 @@ class CustomFedAvg(FedAvg):
         self.original_weights = self.model.get_weights()
         if not self.original_weights:
             raise RuntimeError("Failed to initialize model weights. Ensure the model is compiled properly.")
+        
+    def save_model(self, filepath):
+        """
+        Save the model to the specified filepath.
+        """
+        self.model.save(filepath)
+        print(f"Model saved to {filepath}")
 
+    def _save_checkpoint(self, params):
+        self.ckpt_name = f"ckpt_sym_{int(time.time())}.bin"
+        with open(self.ckpt_name, 'wb') as f:
+            pickle.dump(params, f)
 
     def initialize_parameters(self, client_manager: ClientManager):
         """
@@ -193,9 +205,12 @@ class CustomFedAvg(FedAvg):
             return self._encrypt_params(self.model.get_weights()), {}
 
         aggregated_update = aggregate(decrypted_updates)
+        
+        # Update the model with the aggregated weights
+        self.model.set_weights(aggregated_update)
+        
         encrypted_params = self._encrypt_params(aggregated_update)
         return encrypted_params, {}
-
 
     def aggregate_evaluate(self, server_round: int, results, failures):
         """
@@ -240,6 +255,7 @@ def main():
     5. Build the model based on dataset requirements.
     6. Start the federated server to orchestrate client training.
     7. Plot training metrics after training rounds.
+    8. Save the model after the last round.
     """
     config = load_config("config.yaml")
     server_config = config["server"]
@@ -255,10 +271,10 @@ def main():
         aes_key=aes_key,
     )
 
-    input_shape=server_config['input_shape']
-    num_classes=server_config['num_classes']
-    model_type=server_config['model_type']
-    custom_strategy.buid_and_load_model(input_shape, num_classes, model_type)
+    input_shape = tuple(server_config['input_shape'])
+    num_classes = server_config['num_classes']
+    model_type = server_config['model_type']
+    custom_strategy.build_and_load_model(input_shape, num_classes, model_type)
 
     # Start the federated server
     start_server(
@@ -269,6 +285,9 @@ def main():
 
     # Plot training metrics
     plot_training_metrics(metrics["rounds"], metrics["loss"], metrics["accuracy"])
+
+    # Save the model after the last round
+    custom_strategy.save_model("final_model.h5")
 
 if __name__ == "__main__":
     main()
