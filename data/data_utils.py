@@ -68,7 +68,7 @@ def prepare_data(dataset, tokenizer=None, input_col=None, output_col=None, datas
     """
     if dataset_type == 'text':
         def tokenize_function(examples):
-            vocab_size = 20000
+            vocab_size = tokenizer.vocab_size
             tokenized = tokenizer(examples[input_col], truncation=True, padding='max_length')
             tokenized["input_ids"] = np.clip(tokenized["input_ids"], 0, vocab_size - 1)  # Ensure valid vocab range
             return tokenized

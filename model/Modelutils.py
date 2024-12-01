@@ -1,7 +1,8 @@
 import tensorflow as tf
 from tensorflow.keras import layers, models
+from transformers import AutoTokenizer
 
-def build_model(input_shape, num_classes, model_type='dense', vocab_size=20000):
+def build_model(input_shape, num_classes, model_type='dense'):
     """
     Build and compile a Keras model.
 
@@ -14,6 +15,9 @@ def build_model(input_shape, num_classes, model_type='dense', vocab_size=20000):
     Returns:
         A compiled Keras model.
     """
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+    vocab_size = tokenizer.vocab_size
+
     if model_type == 'image':
         print("input_shape", input_shape)
         input_shape = tuple(input_shape)

@@ -88,6 +88,8 @@ def create_flower_client(input_shape, num_classes, model_type, X_train, Y_train,
                 Decrypted parameters.
             """
             params = parameters.tensors
+            # print(f"Model Weights Shapes {self.model.get_weights().shape}")
+
             dec_params = [
                 RsaCryptoAPI.decrypt_numpy_array(
                     self.aes_key, param, dtype=self.model.get_weights()[i].dtype

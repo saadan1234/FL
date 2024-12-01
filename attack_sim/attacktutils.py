@@ -10,9 +10,11 @@ from flwr.common import (
     Status,
     Code
 )
-from clientutils import build_model, load_data  # Function to build the required ML model
+from client.clientutils import build_model  # Function to build the required ML model
 from crypto.rsa_crypto import RsaCryptoAPI  # Handles RSA encryption/decryption
 import tensorflow as tf
+import numpy as np
+from transformers import AutoTokenizer
 
 def create_gradient_leakage_client(input_shape, num_classes, model_type, X_train, Y_train, X_test, Y_test):
     class GradientLeakageClient(Client):
@@ -56,6 +58,9 @@ def create_gradient_leakage_client(input_shape, num_classes, model_type, X_train
             inputs = tf.convert_to_tensor(X_train[:1], dtype=tf.float32)
             targets = tf.convert_to_tensor(Y_train[:1], dtype=tf.int32)
 
+            # Load the tokenizer (make sure to use the same tokenizer that was used for encoding)
+            tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+
             # Compute initial loss and gradients
             with tf.GradientTape() as tape:
                 outputs = self.model(inputs)
@@ -67,22 +72,51 @@ def create_gradient_leakage_client(input_shape, num_classes, model_type, X_train
                 self.model, gradients, inputs.shape, inputs.numpy()
             )
 
+            print(f"Recovered Data: {reconstructed_data}")
+            print(f"Original Data: {inputs}")
+
+            # # Step 1: Convert to token IDs
+            # recovered_ids = np.clip(np.round(reconstructed_data).astype(int), 0, tokenizer.vocab_size - 1)
+
+            # # Step 2: Check for valid IDs and convert invalid ones
+            # valid_ids = []
+            # for ids in recovered_ids:
+            #     adjusted_ids = []
+            #     for id in ids:
+            #         if 0 <= id < tokenizer.vocab_size:
+            #             adjusted_ids.append(id)  # Valid ID
+            #         else:
+            #             # Convert to nearest valid ID
+            #             nearest_id = max(0, min(id, tokenizer.vocab_size - 1))
+            #             adjusted_ids.append(nearest_id)
+            #     valid_ids.append(adjusted_ids)
+
+            # # Step 3: Decode valid IDs back to text
+            # decoded_texts = []
+            # for ids in valid_ids:
+            #     decoded_text = tokenizer.decode(ids, skip_special_tokens=True)  # Skip special tokens if needed
+            #     decoded_texts.append(decoded_text)
+
+            # # Print the reconstructed text
+            # for i, text in enumerate(decoded_texts):
+            #     print(f"Reconstructed Text {i}: {text}")
+
             # Load original data for comparison
-            original_data = inputs.numpy()  # Assuming the original data is in the first element
-            # Convert recovered data back to original format if necessary
-            # Here, we can assume that the original data is in the same shape as reconstructed_data
-            recovered_data_converted = reconstructed_data.flatten()  # Adjust this line if needed
+            # original_data = inputs.numpy()  # Assuming the original data is in the first element
+            # # Convert recovered data back to original format if necessary
+            # # Here, we can assume that the original data is in the same shape as reconstructed_data
+            # recovered_data_converted = reconstructed_data.flatten()  # Adjust this line if needed
 
-            # Create a mapping from numerical values to text
-            token_to_text = {i: text for i, text in enumerate(original_data)}
+            # # Create a mapping from numerical values to text
+            # token_to_text = {i: text for i, text in enumerate(original_data)}
 
-            # Convert recovered data to text format
-            recovered_text = [token_to_text.get(int(token), "[UNK]") for token in recovered_data_converted]
+            # # Convert recovered data to text format
+            # recovered_text = [token_to_text.get(int(token), "[UNK]") for token in recovered_data_converted]
 
-            # Print the recovered or generated data in text format
-            print("Recovered Data (first 5 elements):", recovered_text[:5])
-            print("Original Data (first 5 elements):", original_data[:5])
-            print("Similarity Score (MSE):", similarity_score)
+            # # Print the recovered or generated data in text format
+            # # print("Recovered Data (first 5 elements):", recovered_text[:5])
+            # # print("Original Data (first 5 elements):", original_data[:5])
+            # print("Similarity Score (MSE):", similarity_score)
 
             # Prepare parameters for the server
             get_param_ins = GetParametersIns(config={"aes_key": self.aes_key})
