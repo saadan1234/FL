@@ -11,7 +11,7 @@ from flwr.server.strategy.aggregate import aggregate
 from serverutils import load_config, plot_training_metrics, weighted_average
 from crypto.rsa_crypto import RsaCryptoAPI
 from clientutils import load_dataset_hf, preprocess_and_split, prepare_data
-from clientutils import build_model
+from Modelutils import build_model
 
 # Metrics storage
 metrics = {"rounds": [], "loss": [], "accuracy": []}
@@ -75,7 +75,7 @@ class CustomFedAvg(FedAvg):
         print('output_column:', output_column)
         return preprocess_and_split(dataset["train"], tokenizer, dataset_type,True, input_column, output_column)
 
-    def build_and_save_model(self, input_shape, num_classes, model_type="dense"):
+    def buid_and_load_model(self, input_shape, num_classes, model_type="dense"):
         """
         Builds a model based on the dataset's requirements and initializes original weights.
         """
@@ -243,7 +243,6 @@ def main():
     """
     config = load_config("config.yaml")
     server_config = config["server"]
-    client_config = config["client1"]
 
     # Load encryption key
     aes_key = RsaCryptoAPI.load_key("crypto/aes_key.bin")
@@ -256,21 +255,10 @@ def main():
         aes_key=aes_key,
     )
 
-    # Load and preprocess data
-    X_train, X_test, Y_train, Y_test = custom_strategy.load_and_prepare_data(
-        dataset_name=client_config["dataset_name"],
-        dataset_type=client_config["dataset_type"],
-        input_column=client_config["input_column"],
-        output_column=client_config["output_column"],
-    )
-
-    # Build the model
-    input_shape = X_train.shape[1]
-    if(client_config["dataset_type"]=='traditional'):
-        input_shape = X_train.shape
-        print('input_shape:', input_shape)
-    num_classes = len(np.unique(Y_train))
-    custom_strategy.build_and_save_model(input_shape, num_classes, client_config["model_type"])
+    input_shape=server_config['input_shape']
+    num_classes=server_config['num_classes']
+    model_type=server_config['model_type']
+    custom_strategy.buid_and_load_model(input_shape, num_classes, model_type)
 
     # Start the federated server
     start_server(

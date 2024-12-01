@@ -59,7 +59,8 @@ def prepare_client_data(dataset_name, dataset_type, input_column, output_column,
    
     input_shape = X_train.shape[1]
     if(dataset_type=='traditional'):
-        input_shape = X_train.shape
+        input_shape = X_train.shape[1:]
+        print(input_shape)
 
     return client_data, test_data, input_shape, len(np.unique(Y_train))
 

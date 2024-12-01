@@ -23,73 +23,7 @@ from crypto.rsa_crypto import RsaCryptoAPI
 import tensorflow as tf
 import numpy as np
 
-import tensorflow as tf
-from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, MaxPooling2D, Flatten, Dropout, Dense
-from tensorflow.keras.models import Model
-
-import tensorflow as tf
-from tensorflow.keras import layers, models
-
-def build_model(input_shape, num_classes, model_type='dense', vocab_size=20000):
-    """
-    Build and compile a Keras model.
-
-    Args:
-        input_shape: Shape of the input data (for images or numeric data).
-        num_classes: Number of output classes.
-        model_type: Type of model to build ('dense', 'image', or 'text').
-        vocab_size: Size of the vocabulary (required for 'text' model).
-
-    Returns:
-        A compiled Keras model.
-    """
-    if model_type == 'image':
-        print("input_shape", input_shape)
-        
-        # Create the model using the Sequential API
-        model = models.Sequential()
-        model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)))
-        model.add(layers.MaxPooling2D((2, 2)))
-        model.add(layers.Conv2D(64, (3, 3), activation='relu'))
-        model.add(layers.MaxPooling2D((2, 2)))
-        model.add(layers.Conv2D(64, (3, 3), activation='relu'))
-        model.add(layers.Flatten())
-        model.add(layers.Dense(64, activation='relu'))
-        model.add(layers.Dense(num_classes, activation='softmax'))
-        
-        loss = 'sparse_categorical_crossentropy' if num_classes > 1 else 'binary_crossentropy'
-    
-    elif model_type == 'dense':
-        model = tf.keras.Sequential([
-            tf.keras.layers.Dense(64, activation='relu', input_shape=(input_shape,)),
-            tf.keras.layers.Dropout(0.2),  # Helps with regularization
-            tf.keras.layers.Dense(32, activation='relu'),
-            tf.keras.layers.Dense(num_classes, activation='softmax')
-        ])
-        loss = 'sparse_categorical_crossentropy' if num_classes > 1 else 'binary_crossentropy'
-    
-    elif model_type == 'text':
-        if vocab_size is None:
-            raise ValueError("vocab_size must be specified for 'text' models.")
-        model = tf.keras.Sequential([
-            tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=128, input_shape=(input_shape,)),
-            tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(64, return_sequences=False)),
-            tf.keras.layers.Dense(32, activation='relu'),
-            tf.keras.layers.Dense(num_classes, activation='softmax')
-        ])
-        loss = 'sparse_categorical_crossentropy' if num_classes > 1 else 'binary_crossentropy'
-    
-    else:
-        raise ValueError("Unsupported model type. Choose 'dense', 'image', or 'text'.")
-
-    # Compilation
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-        loss=loss,
-        metrics=['accuracy']
-    )
-    return model
-
+from Modelutils import build_model  # Import the build_model function
 
 def create_flower_client(input_shape, num_classes, model_type, X_train, Y_train, X_test, Y_test):
     """
@@ -184,7 +118,7 @@ def create_flower_client(input_shape, num_classes, model_type, X_train, Y_train,
                 Fit results including updated parameters.
             """
             self.set_parameters(ins.parameters, self.aes_key)
-            self.model.fit(X_train, Y_train,validation_data=(X_test, Y_test), epochs=10, batch_size=32, verbose=1)
+            self.model.fit(X_train, Y_train, validation_data=(X_test, Y_test), epochs=10, batch_size=32, verbose=1)
             get_param_ins = GetParametersIns(config={'aes_key': self.aes_key})
             return FitRes(
                 status=Status(code=Code.OK, message="Success"),
@@ -227,7 +161,15 @@ def load_config(file_path):
         Parsed YAML configuration.
     """
     with open(file_path, 'r') as file:
-        return yaml.safe_load(file)
+        config = yaml.safe_load(file)
+    
+    # Convert input_shape from list to tuple
+    if 'input_shape' in config['client1']:
+        config['client1']['input_shape'] = tuple(config['client1']['input_shape'])
+    if 'input_shape' in config['client2']:
+        config['client2']['input_shape'] = tuple(config['client2']['input_shape'])
+    
+    return config
 
 def load_dataset_hf(dataset_name, input_column=None, instructions_column=None, output_column=None, dataset_type='traditional'):
     """
