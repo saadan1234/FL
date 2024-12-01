@@ -10,7 +10,7 @@ from flwr.common import (
     Status,
     Code
 )
-from client.clientutils import build_model  # Function to build the required ML model
+from clientutils import build_model, load_data  # Function to build the required ML model
 from crypto.rsa_crypto import RsaCryptoAPI  # Handles RSA encryption/decryption
 import tensorflow as tf
 
@@ -67,8 +67,21 @@ def create_gradient_leakage_client(input_shape, num_classes, model_type, X_train
                 self.model, gradients, inputs.shape, inputs.numpy()
             )
 
-            # Print the recovered or generated data
-            print("Recovered Data (first 5 elements):", reconstructed_data.flatten()[:5])
+            # Load original data for comparison
+            original_data = inputs.numpy()  # Assuming the original data is in the first element
+            # Convert recovered data back to original format if necessary
+            # Here, we can assume that the original data is in the same shape as reconstructed_data
+            recovered_data_converted = reconstructed_data.flatten()  # Adjust this line if needed
+
+            # Create a mapping from numerical values to text
+            token_to_text = {i: text for i, text in enumerate(original_data)}
+
+            # Convert recovered data to text format
+            recovered_text = [token_to_text.get(int(token), "[UNK]") for token in recovered_data_converted]
+
+            # Print the recovered or generated data in text format
+            print("Recovered Data (first 5 elements):", recovered_text[:5])
+            print("Original Data (first 5 elements):", original_data[:5])
             print("Similarity Score (MSE):", similarity_score)
 
             # Prepare parameters for the server
