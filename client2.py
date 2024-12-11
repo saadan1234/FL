@@ -94,14 +94,13 @@ def start_flower_client(client_id, input_shape, num_classes, model_type, client_
 
     # Create the model
     print(f"Initializing Client {client_id}")
-   #  client = create_gradient_leakage_client(
-   #      input_shape, num_classes, model_type, X_client_train, Y_client_train, X_client_test, Y_client_test, data_poisoning=True, gradient_attack=False
-   #  )
-    client = create_flower_client(
-         input_shape, num_classes, model_type, X_client_train, Y_client_train, X_client_test, Y_client_test
-      )
-
-
+    client = create_gradient_leakage_client(
+        input_shape, num_classes, model_type, X_client_train, Y_client_train, X_client_test, Y_client_test, data_poisoning=False
+    )
+   #  client = create_flower_client(
+   #       input_shape, num_classes, model_type, X_client_train, Y_client_train, X_client_test, Y_client_test
+   #    )
+      
     # Start Flower client
     print(f"Starting Client {client_id}")
     start_client(server_address=f"127.0.0.2:8080", client=client)
