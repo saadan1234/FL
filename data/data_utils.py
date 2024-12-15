@@ -5,45 +5,25 @@ from sklearn.preprocessing import MinMaxScaler
 import yaml
 from transformers import DataCollatorWithPadding
 from datasets import load_dataset
+from typing import Any, Dict, Tuple, List
 
-def load_config(file_path):
-    """
-    Load configuration from a YAML file.
-
-    Args:
-        file_path: Path to the YAML file.
-
-    Returns:
-        Parsed YAML configuration.
-    """
-    with open(file_path, 'r') as file:
-        config = yaml.safe_load(file)
-    
-    # Convert input_shape from list to tuple
-    if 'input_shape' in config['client1']:
-        config['client1']['input_shape'] = tuple(config['client1']['input_shape'])
-    if 'input_shape' in config['client2']:
-        config['client2']['input_shape'] = tuple(config['client2']['input_shape'])
-    
-    return config
-
-def load_dataset_hf(dataset_name, input_column=None, instructions_column=None, output_column=None, dataset_type='traditional'):
+def load_dataset_hf(dataset_name: str, input_column: str = None, instructions_column: str = None, output_column: str = None, dataset_type: str = 'traditional') -> Any:
     """
     Load a dataset from Hugging Face's dataset library.
 
     Args:
-        dataset_name: Name of the dataset.
-        input_column: Column containing input data.
-        instructions_column: Column containing additional instructions (optional).
-        output_column: Column containing output labels.
-        dataset_type: Type of dataset ('text' or 'traditional').
+        dataset_name (str): Name of the dataset.
+        input_column (str, optional): Column containing input data.
+        instructions_column (str, optional): Column containing additional instructions (optional).
+        output_column (str, optional): Column containing output labels.
+        dataset_type (str): Type of dataset ('text' or 'traditional').
 
     Returns:
-        Loaded dataset.
+        Any: Loaded dataset.
     """
     dataset = load_dataset(dataset_name)
     if dataset_type == 'text' and input_column and output_column:
-        def filter_nulls(example):
+        def filter_nulls(example: Dict[str, Any]) -> bool:
             required_columns = [input_column, output_column]
             if instructions_column:
                 required_columns.append(instructions_column)
@@ -52,22 +32,22 @@ def load_dataset_hf(dataset_name, input_column=None, instructions_column=None, o
         dataset = dataset.filter(filter_nulls)
     return dataset
 
-def prepare_data(dataset, tokenizer=None, input_col=None, output_col=None, dataset_type='traditional'):
+def prepare_data(dataset: Any, tokenizer: Any = None, input_col: str = None, output_col: str = None, dataset_type: str = 'traditional') -> Any:
     """
     Prepare the dataset for model training.
 
     Args:
-        dataset: The dataset to prepare.
-        tokenizer: Tokenizer for text datasets.
-        input_col: Column name for input data.
-        output_col: Column name for output labels.
-        dataset_type: Type of dataset ('text' or 'traditional').
+        dataset (Any): The dataset to prepare.
+        tokenizer (Any, optional): Tokenizer for text datasets.
+        input_col (str, optional): Column name for input data.
+        output_col (str, optional): Column name for output labels.
+        dataset_type (str): Type of dataset ('text' or 'traditional').
 
     Returns:
-        Prepared dataset.
+        Any: Prepared dataset.
     """
     if dataset_type == 'text':
-        def tokenize_function(examples):
+        def tokenize_function(examples: Dict[str, Any]) -> Dict[str, Any]:
             vocab_size = tokenizer.vocab_size
             tokenized = tokenizer(examples[input_col], truncation=True, padding='max_length')
             tokenized["input_ids"] = np.clip(tokenized["input_ids"], 0, vocab_size - 1)  # Ensure valid vocab range
@@ -75,19 +55,20 @@ def prepare_data(dataset, tokenizer=None, input_col=None, output_col=None, datas
         dataset = dataset.map(tokenize_function, batched=True)
     return dataset
 
-def preprocess_and_split(dataset, tokenizer=None, dataset_type='traditional', normalize=True, input_col=None, output_col=None):
+def preprocess_and_split(dataset: Any, tokenizer: Any = None, dataset_type: str = 'traditional', normalize: bool = True, input_col: str = None, output_col: str = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Preprocess and split data into training and test sets.
 
     Args:
-        dataset: Dataset to preprocess.
-        tokenizer: Tokenizer for text datasets.
-        dataset_type: Type of dataset ('text' or 'traditional').
-        input_col: Column for input data.
-        output_col: Column for output labels.
+        dataset (Any): Dataset to preprocess.
+        tokenizer (Any, optional): Tokenizer for text datasets.
+        dataset_type (str): Type of dataset ('text' or 'traditional').
+        normalize (bool): Whether to normalize the input data.
+        input_col (str, optional): Column for input data.
+        output_col (str, optional): Column for output labels.
 
     Returns:
-        Split data: X_train, X_test, Y_train, Y_test.
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Split data: X_train, X_test, Y_train, Y_test.
     """
     if dataset_type == 'text':
         examples = [dataset[i] for i in range(len(dataset))]
@@ -106,30 +87,62 @@ def preprocess_and_split(dataset, tokenizer=None, dataset_type='traditional', no
             x = scaler.fit_transform(x.reshape(-1, x_shape[-1])).reshape(x_shape)
     return train_test_split(x, y, test_size=0.2, random_state=42)
 
-def save_data(filename, X_train, Y_train, X_test, Y_test):
+def save_data(filename: str, X_train: np.ndarray, Y_train: np.ndarray, X_test: np.ndarray, Y_test: np.ndarray) -> None:
     """
     Save training and test data to a file.
 
     Args:
-        filename: Path to the output file.
-        X_train, Y_train: Training data and labels.
-        X_test, Y_test: Test data and labels.
+        filename (str): Path to the output file.
+        X_train (np.ndarray): Training data.
+        Y_train (np.ndarray): Training labels.
+        X_test (np.ndarray): Test data.
+        Y_test (np.ndarray): Test labels.
     """
-    with open(filename, 'wb') as f:
+    with open(filename, ' wb') as f:
         pickle.dump((X_train, Y_train, X_test, Y_test), f)
 
-def load_data(filename):
+def load_data(filename: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Load training and test data from a file.
 
     Args:
-        filename: Path to the file.
+        filename (str): Path to the file.
 
     Returns:
-        Loaded data: X_train, Y_train, X_test, Y_test
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Loaded data: X_train, Y_train, X_test, Y_test.
     """
     with open(filename, 'rb') as f:
         return pickle.load(f)
-    
-def flower_weights_to_keras_weights(parameters):
+
+def flower_weights_to_keras_weights(parameters: List[np.ndarray]) -> List[np.ndarray]:
+    """
+    Convert Flower model weights to Keras-compatible weights.
+
+    Args:
+        parameters (List[np.ndarray]): List of model parameters.
+
+    Returns:
+        List[np.ndarray]: List of Keras-compatible weights.
+    """
     return [np.array(w, dtype=np.float32) for w in parameters]
+
+def load_config(file_path: str) -> Dict[str, Any]:
+    """
+    Load configuration from a YAML file.
+
+    Args:
+        file_path (str): Path to the YAML file.
+
+    Returns:
+        Dict[str, Any]: Parsed YAML configuration.
+    """
+    with open(file_path, 'r') as file:
+        config = yaml.safe_load(file)
+    
+    # Convert input_shape from list to tuple
+    if 'input_shape' in config['client1']:
+        config['client1']['input_shape'] = tuple(config['client1']['input_shape'])
+    if 'input_shape' in config['client2']:
+        config['client2']['input_shape'] = tuple(config['client2']['input_shape'])
+    
+    return config

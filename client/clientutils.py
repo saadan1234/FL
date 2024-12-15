@@ -13,7 +13,7 @@ from flwr.common import (
 )
 from crypto.rsa_crypto import RsaCryptoAPI
 import tensorflow as tf
-from model.Modelutils import build_model  # Import the build_model function
+from model.modelutils import build_model  # Import the build_model function
 
 def create_flower_client(input_shape, num_classes, model_type, X_train, Y_train, X_test, Y_test):
     """

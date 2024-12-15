@@ -1,5 +1,5 @@
 server:
-  num_rounds: 10
+  num_rounds: 2
   zscore_threshold: 2.5
   momentum: 0.9
   server_address: "0.0.0.0:8080"
@@ -9,12 +9,6 @@ server:
   output_column: 'label'
   input_shape: [32, 32, 3]
   num_classes: 10
-  # dataset_type: 'text'
-  # model_type: 'text'
-  # input_column: 'text'
-  # output_column: 'label'
-  # input_shape: 512
-  # num_classes: 9
 client1:
   dataset_name: 'uoft-cs/cifar10'
   dataset_type: 'traditional'

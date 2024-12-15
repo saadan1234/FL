@@ -1,7 +1,9 @@
 # Import necessary libraries
 import pickle
 import time
+from typing import Tuple
 import numpy as np
+from transformers import AutoTokenizer
 from flwr.server import start_server, ServerConfig
 from flwr.server.strategy import FedAvg
 from flwr.common import (
@@ -10,9 +12,11 @@ from flwr.common import (
 )
 from flwr.server.client_manager import ClientManager
 from flwr.server.strategy.aggregate import aggregate
+import tensorflow as tf
+from data.data_utils import load_dataset_hf, prepare_data, preprocess_and_split
 from server.serverutils import load_config, plot_training_metrics, weighted_average
 from crypto.rsa_crypto import RsaCryptoAPI
-from model.Modelutils import build_model
+from model.modelutils import build_model
 
 # Metrics storage
 metrics = {"rounds": [], "loss": [], "accuracy": []}
@@ -45,16 +49,16 @@ class CustomFedAvg(FedAvg):
         - `aes_key`: Key for encrypting/decrypting updates.
         """
         super().__init__(**kwargs)
-        self.zscore_threshold = zscore_threshold
-        self.momentum = momentum
-        self.previous_accuracy = None
-        self.aes_key = aes_key
-        self.model = None
-        self.original_weights = None
-        self.init_stage = True
-        self.ckpt_name = None
+        self.zscore_threshold: float = zscore_threshold
+        self.momentum: float = momentum
+        self.previous_accuracy: float = None
+        self.aes_key: bytes = aes_key
+        self.model: tf.keras.Model = None
+        self.original_weights: NDArrays = None
+        self.init_stage: bool = True
+        self.ckpt_name: str = None
 
-    def load_and_prepare_data(self, dataset_name, dataset_type="traditional", input_column=None, output_column=None):
+    def load_and_prepare_data(self, dataset_name: str, dataset_type: str = "traditional", input_column: str = None, output_column: str = None) -> Tuple:
         """
         Load and preprocess dataset for model training.
         
@@ -67,7 +71,6 @@ class CustomFedAvg(FedAvg):
         """
         tokenizer = None
         if dataset_type == "text":
-            from transformers import AutoTokenizer
             tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
         dataset = load_dataset_hf(dataset_name, input_column, output_column, dataset_type)
@@ -76,9 +79,14 @@ class CustomFedAvg(FedAvg):
         print('output_column:', output_column)
         return preprocess_and_split(dataset["train"], tokenizer, dataset_type,True, input_column, output_column)
 
-    def build_and_load_model(self, input_shape, num_classes, model_type="dense"):
+    def build_and_load_model(self, input_shape: Tuple[int, ...], num_classes: int, model_type: str = "dense") -> None:
         """
         Builds a model based on the dataset's requirements and initializes original weights.
+        
+        Parameters:
+        - `input_shape`: Shape of the input data.
+        - `num_classes`: Number of output classes.
+        - `model_type`: Type of the model to be built.
         """
         self.model = build_model(input_shape, num_classes, model_type)
         if self.model is None:
@@ -87,10 +95,13 @@ class CustomFedAvg(FedAvg):
         if not self.original_weights:
             raise RuntimeError("Failed to initialize model weights. Ensure the model is compiled properly.")
         
-    def save_model(self, filepath):
+    def save_model(self, filepath: str) -> None:
         """
         Save the model to the specified filepath.
-        """
+        
+        Parameters:
+        - `filepath`: Path where the model will be saved.
+        """  
         self.model.save(filepath)
         print(f"Model saved to {filepath}")
 
