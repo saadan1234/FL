@@ -125,11 +125,12 @@ class CustomFedAvg(FedAvg):
         """
         Encrypts model parameters using AES encryption and logs the encryption process.
         """
-        print(f"Encrypting {len(ndarrays)} parameters for secure communication...")
+
         encrypted = [
             RsaCryptoAPI.encrypt_numpy_array(self.aes_key, arr) for arr in ndarrays
         ]
-        print(f"Encryption successful. Number of encrypted tensors: {len(encrypted)}")
+        
+
         return Parameters(tensors=encrypted, tensor_type="")
 
     def _decrypt_params(self, parameters: Parameters) -> NDArrays:
@@ -184,23 +185,24 @@ class CustomFedAvg(FedAvg):
         - Ensures encrypted parameters are sent to clients.
         """
         if self.init_stage:
-            parameters = self._encrypt_params(self.model.get_weights())
+            model_weights = self.model.get_weights()
+            parameters = self._encrypt_params(model_weights)
             self.init_stage = False
 
-        eval_config = super().configure_evaluate(server_round, parameters, client_manager)
-        for _, eval_ins in eval_config:
-            eval_ins.config["enc_key"] = self.aes_key
-        return eval_config
+        encrypted_params_shapes = [len(param) for param in parameters.tensors]
 
+        eval_config = super().configure_evaluate(server_round, parameters, client_manager)
+        for client_id, eval_ins in eval_config:
+            eval_ins.config["enc_key"] = self.aes_key
+        
+        return eval_config
     def aggregate_fit(self, server_round: int, results, failures):
         """
         Aggregates training results from clients securely, handles incomplete responses.
         """
         if not results:
-            print(f"No results received in round {server_round}. Skipping aggregation.")
             return self._encrypt_params(self.model.get_weights()), {}
 
-        print(f"Received results from {len(results)} clients. Processing updates...")
         decrypted_updates = []
         for client_id, fit_res in results:
             try:
@@ -208,20 +210,24 @@ class CustomFedAvg(FedAvg):
                     (self._decrypt_params(fit_res.parameters), fit_res.num_examples)
                 )
             except ValueError as e:
-                print(f"Error decrypting parameters from client {client_id}: {e}")
                 continue  # Skip this client
 
         if not decrypted_updates:
-            print(f"No valid updates received in round {server_round}.")
             return self._encrypt_params(self.model.get_weights()), {}
 
         aggregated_update = aggregate(decrypted_updates)
         
+        # Log the shapes of the aggregated weights
+
         # Update the model with the aggregated weights
         self.model.set_weights(aggregated_update)
         
-        encrypted_params = self._encrypt_params(aggregated_update)
+        # Log the shapes of the model weights after setting the new weights
+
+        encrypted_params = self._encrypt_params(self.model.get_weights())
+
         return encrypted_params, {}
+
 
     def aggregate_evaluate(self, server_round: int, results, failures):
         """

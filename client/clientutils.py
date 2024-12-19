@@ -69,7 +69,6 @@ def create_flower_client(input_shape, num_classes, model_type, X_train, Y_train,
             """
             print("Getting model parameters for encryption.")
             enc_params = [RsaCryptoAPI.encrypt_numpy_array(self.aes_key, w) for w in self.model.get_weights()]
-            print(f"Encrypted parameters: {[len(param) for param in enc_params]}")
 
             return GetParametersRes(
                 status=Status(code=Code.OK, message="Success"),
@@ -88,14 +87,17 @@ def create_flower_client(input_shape, num_classes, model_type, X_train, Y_train,
                 Decrypted parameters.
             """
             params = parameters.tensors
-            # print(f"Model Weights Shapes {self.model.get_weights().shape}")
-
+            for i, param in enumerate(params):
+                decrypted_array = RsaCryptoAPI.decrypt_numpy_array(
+                    self.aes_key, param, dtype=self.model.get_weights()[i].dtype
+                )
             dec_params = [
                 RsaCryptoAPI.decrypt_numpy_array(
                     self.aes_key, param, dtype=self.model.get_weights()[i].dtype
                 ).reshape(self.model.get_weights()[i].shape)
                 for i, param in enumerate(params)
             ]
+            
             self.model.set_weights(dec_params)
             return dec_params
 
