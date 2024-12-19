@@ -10,7 +10,7 @@ from flwr.common import (
     Status,
     Code
 )
-from client.clientutils import build_model  # Function to build the required ML model
+from model.Modelutils import build_model  # Function to build the required ML model
 from crypto.rsa_crypto import RsaCryptoAPI  # Handles RSA encryption/decryption
 import tensorflow as tf
 

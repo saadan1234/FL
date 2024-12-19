@@ -16,7 +16,7 @@ import tensorflow as tf
 from data.data_utils import load_dataset_hf, prepare_data, preprocess_and_split
 from server.serverutils import load_config, plot_training_metrics, weighted_average
 from crypto.rsa_crypto import RsaCryptoAPI
-from model.modelutils import build_model
+from model.Modelutils import build_model
 
 # Metrics storage
 metrics = {"rounds": [], "loss": [], "accuracy": []}
@@ -228,7 +228,7 @@ class CustomFedAvg(FedAvg):
         Aggregates evaluation results from clients and tracks metrics.
         """
         result = super().aggregate_evaluate(server_round, results, failures)
-
+        print(result)
         if not results:
             print(f"No evaluation results received in round {server_round}.")
             metrics["rounds"].append(server_round)
@@ -248,9 +248,9 @@ class CustomFedAvg(FedAvg):
         # Store metrics
         metrics["rounds"].append(server_round)
         metrics["loss"].append(loss_value)
-        metrics["accuracy"].append(smoothed_accuracy)
+        metrics["accuracy"].append(current_accuracy)
 
-        print(f"Round {server_round}: Loss = {loss_value}, Smoothed Accuracy = {smoothed_accuracy}")
+        print(f"Round {server_round}: Loss = {loss_value}, Smoothed Accuracy = {current_accuracy}")
         return result
 
 

@@ -1,5 +1,5 @@
 server:
-  num_rounds: 2
+  num_rounds: 10
   zscore_threshold: 2.5
   momentum: 0.9
   server_address: "0.0.0.0:8080"
@@ -18,7 +18,7 @@ client1:
   input_shape: [32, 32, 3]
   num_classes: 10
 client2:
-  dataset_name: 'uoft-cs/cifar10'
+  dataset_name: 'wasifis/image-10'
   dataset_type: 'traditional'
   model_type: 'image'
   input_column: 'img'
